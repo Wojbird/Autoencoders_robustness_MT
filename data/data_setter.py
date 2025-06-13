@@ -1,18 +1,12 @@
 import os
-import random
 import json
 from PIL import Image
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
-from torch.utils.data import DataLoader, random_split, Dataset
+from torch.utils.data import random_split, Dataset
 
 
 class ImageNetKaggle(Dataset):
-    """
-    Custom Dataset for loading ImageNet2012 in Kaggle-style format with ILSVRC2012_val_labels.json
-    and imagenet_class_index.json.
-    """
-
     def __init__(self, root, split, transform=None):
         self.samples = []
         self.targets = []
@@ -56,55 +50,28 @@ class ImageNetKaggle(Dataset):
         return x, self.targets[idx]
 
 
-def get_subnet_dataloaders(
-    data_dir: str,
-    image_size: int = 224,
-    batch_size: int = 64,
-    num_workers: int = 8,
-    seed: int = 42
-):
-    """
-    Returns train/val dataloaders for the Subset of ImageNet (ImageFolder).
-    Uses a reproducible random split.
-    """
-    transform = transforms.Compose([
+def get_transforms(image_size):
+    return transforms.Compose([
         transforms.Resize((image_size, image_size)),
-        transforms.ToTensor(),  # normalized to [0,1]
+        transforms.ToTensor()  # normalizacja do [0,1]
     ])
 
-    dataset = ImageFolder(data_dir, transform=transform)
 
-    total = len(dataset)
-    train_size = int(0.85 * total)
-    val_size = total - train_size
+def get_subnet_datasets(root_dir="datasets/subset_imagenet/", image_size=224, val_split=0.1):
+    transform = get_transforms(image_size)
+    dataset = ImageFolder(root_dir, transform=transform)
 
-    random.seed(seed)
+    val_size = int(len(dataset) * val_split)
+    train_size = len(dataset) - val_size
     train_set, val_set = random_split(dataset, [train_size, val_size])
 
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=num_workers)
-
-    return train_loader, val_loader
+    return train_set, val_set
 
 
-def get_imagenet_dataloaders(
-    root: str,
-    image_size: int = 224,
-    batch_size: int = 64,
-    num_workers: int = 4
-):
-    """
-    Returns train and val dataloaders for full ImageNet2012.
-    """
-    transform = transforms.Compose([
-        transforms.Resize((image_size, image_size)),
-        transforms.ToTensor(),  # normalized to [0,1]
-    ])
+def get_imagenet_datasets(root_dir="/raid/kszyc/datasets/ImageNet2012", image_size=224):
+    transform = get_transforms(image_size)
 
-    train_set = ImageNetKaggle(root, split="train", transform=transform)
-    val_set = ImageNetKaggle(root, split="val", transform=transform)
+    train_set = ImageNetKaggle(root=root_dir, split="train", transform=transform)
+    val_set = ImageNetKaggle(root=root_dir, split="val", transform=transform)
 
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=num_workers)
-
-    return train_loader, val_loader
+    return train_set, val_set

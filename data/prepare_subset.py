@@ -2,43 +2,43 @@ import os
 import kagglehub
 import shutil
 
+
 def prepare_imagenet100():
     """
-        Funkcja – Pobiera dane do .cache/kagglehub/ i przenosi je do datasets/subset_imagenet
+    Downloads the ImageNet100 dataset using kagglehub and moves it to the datasets/subset_imagenet directory.
+    Skips download if the target directory already contains data.
     """
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    target_dir = os.path.join(script_dir, "..", "datasets", "subset_imagenet")
+    script_dir = os.path.dirname(__file__)
+    target_dir = os.path.abspath(os.path.join(script_dir, "..", "datasets", "subset_imagenet"))
 
-    if os.path.exists(target_dir) and len(os.listdir(target_dir)) > 0:
-        print(f"Dane już istnieją w '{target_dir}'. Pomijam pobieranie.")
+    if os.path.isdir(target_dir) and os.listdir(target_dir):
+        print(f"[INFO] Dataset already exists at '{target_dir}'. Skipping download.")
         return target_dir
 
-    print("Pobieram ImageNet100 z Kaggle...")
+    print("[INFO] Downloading ImageNet100 dataset from KaggleHub...")
     dataset_path = kagglehub.dataset_download("ambityga/imagenet100")
 
-    print(f"Dane pobrane do tymczasowej lokalizacji: {dataset_path}")
-
-    print(f"Przenoszę dane do katalogu projektu: {target_dir}...")
+    print(f"[INFO] Downloaded to temporary location: {dataset_path}")
+    print(f"[INFO] Moving dataset to: {target_dir}")
     shutil.move(dataset_path, target_dir)
 
-    _cleanup_empty_kagglehub_dirs(dataset_path)
+    _cleanup_empty_dirs(os.path.dirname(dataset_path))
 
-    print("Gotowe! Dane dostępne w:", target_dir)
+    print(f"[INFO] Done. Dataset available at: {target_dir}")
     return target_dir
 
 
-def _cleanup_empty_kagglehub_dirs(old_path):
+def _cleanup_empty_dirs(start_path):
     """
-    Pomocnicza funkcja – usuwa puste katalogi po przeniesieniu danych z .cache/kagglehub/
+    Recursively removes empty parent directories starting from 'start_path'.
     """
-    current = os.path.abspath(old_path)
+    path = os.path.abspath(start_path)
     while True:
-        parent = os.path.dirname(current)
         try:
-            os.rmdir(current)
-            current = parent
+            os.rmdir(path)
+            path = os.path.dirname(path)
         except OSError:
-            break  # katalog nie jest pusty lub nie da się usunąć
+            break
 
 
 if __name__ == "__main__":
