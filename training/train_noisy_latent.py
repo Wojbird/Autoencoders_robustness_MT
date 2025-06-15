@@ -4,10 +4,11 @@ import time
 import torch
 import random
 from torch.utils.data import DataLoader, Subset
+from torchmetrics import MeanSquaredError, PeakSignalNoiseRatio
+from torchmetrics.image import StructuralSimilarityIndexMeasure
 
 from data.data_setter import get_subnet_datasets, get_imagenet_datasets
 from utils.helpers import get_device, save_images, plot_metrics
-from utils.metrics import calculate_mse_latent, calculate_psnr_latent, calculate_ssim_latent
 
 
 def train_model(model_class, config_path, input_variant="noisy-latent", dataset_variant="subset", log=False):
@@ -29,12 +30,10 @@ def train_model(model_class, config_path, input_variant="noisy-latent", dataset_
     best_val_mse = float("inf")
     epochs_no_improve = 0
 
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True,
-                              num_workers=num_workers, pin_memory=True)
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
 
     model = model_class(config).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"],
-                                 weight_decay=config["weight_decay"])
+    optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
     criterion = torch.nn.MSELoss()
 
     result_dir = os.path.join("results", config["name"] + "_noisy_latent", "training")
@@ -68,22 +67,31 @@ def train_model(model_class, config_path, input_variant="noisy-latent", dataset_
                 print(f"[Epoch {epoch+1}/{config['epochs']}] Batch {i}/{len(train_loader)} – Speed: {speed:.1f} it/s")
 
         # Validation on random subset
-        val_size = len(val_set)
-        val_subset_size = max(1, int(val_size * val_fraction))
-        val_indices = random.sample(range(val_size), val_subset_size)
+        val_indices = random.sample(range(len(val_set)), max(1, int(len(val_set) * val_fraction)))
         val_subset = Subset(val_set, val_indices)
-        val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False,
-                                num_workers=num_workers, pin_memory=True)
+        val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
 
-        model.eval()
-        with torch.no_grad():
-            mse_train = calculate_mse_latent(model, train_loader, device, noise_std)
-            psnr_train = calculate_psnr_latent(model, train_loader, device, noise_std)
-            ssim_train = calculate_ssim_latent(model, train_loader, device, noise_std)
+        def compute_metrics(dataloader):
+            mse_metric = MeanSquaredError().to(device)
+            psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(device)
+            ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
 
-            mse_val = calculate_mse_latent(model, val_loader, device, noise_std)
-            psnr_val = calculate_psnr_latent(model, val_loader, device, noise_std)
-            ssim_val = calculate_ssim_latent(model, val_loader, device, noise_std)
+            model.eval()
+            with torch.no_grad():
+                for x, _ in dataloader:
+                    x = x.to(device)
+                    z = model.encode(x)
+                    z_noisy = z + noise_std * torch.randn_like(z)
+                    x_hat = model.decode(z_noisy).clamp(0, 1)
+
+                    mse_metric.update(x_hat, x)
+                    psnr_metric.update(x_hat, x)
+                    ssim_metric.update(x_hat, x)
+
+            return mse_metric.compute().item(), psnr_metric.compute().item(), ssim_metric.compute().item()
+
+        mse_train, psnr_train, ssim_train = compute_metrics(train_loader)
+        mse_val, psnr_val, ssim_val = compute_metrics(val_loader)
 
         for k, v in zip(history.keys(), [mse_train, mse_val, psnr_train, psnr_val, ssim_train, ssim_val]):
             history[k].append(v)

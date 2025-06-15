@@ -4,10 +4,46 @@ import time
 import torch
 import random
 from torch.utils.data import DataLoader, Subset
+from torchmetrics.image import StructuralSimilarityIndexMeasure
+from torchmetrics.functional import peak_signal_noise_ratio
+import torch.nn.functional as F
 
 from data.data_setter import get_subnet_datasets, get_imagenet_datasets
 from utils.helpers import get_device, save_images, plot_metrics
-from utils.metrics import calculate_mse, calculate_psnr, calculate_ssim
+
+
+def evaluate_all_metrics(model, dataloader, device):
+    model.eval()
+    ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
+    total_mse = 0
+    total_psnr = 0
+    total_ssim = 0
+    total_samples = 0
+
+    with torch.no_grad():
+        for x, _ in dataloader:
+            x = x.to(device)
+            out = model(x).clamp(0, 1)
+
+            # MSE
+            mse_batch = F.mse_loss(out, x, reduction='sum')
+            total_mse += mse_batch.item()
+
+            # PSNR
+            psnr_batch = peak_signal_noise_ratio(out, x, data_range=1.0, reduction='sum')
+            total_psnr += psnr_batch.item()
+
+            # SSIM
+            ssim_batch = ssim_metric(out, x) * x.size(0)
+            total_ssim += ssim_batch.item()
+
+            total_samples += x.size(0)
+
+    num_pixels = x[0].numel()
+    mse = total_mse / (total_samples * num_pixels)
+    psnr = total_psnr / total_samples
+    ssim = total_ssim / total_samples
+    return mse, psnr, ssim
 
 
 def train_model(model_class, config_path, input_variant="clean", dataset_variant="subset", log=False):
@@ -72,15 +108,8 @@ def train_model(model_class, config_path, input_variant="clean", dataset_variant
         val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False,
                                 num_workers=num_workers, pin_memory=True)
 
-        model.eval()
-        with torch.no_grad():
-            mse_train = calculate_mse(model, train_loader, device)
-            psnr_train = calculate_psnr(model, train_loader, device)
-            ssim_train = calculate_ssim(model, train_loader, device)
-
-            mse_val = calculate_mse(model, val_loader, device)
-            psnr_val = calculate_psnr(model, val_loader, device)
-            ssim_val = calculate_ssim(model, val_loader, device)
+        mse_train, psnr_train, ssim_train = evaluate_all_metrics(model, train_loader, device)
+        mse_val, psnr_val, ssim_val = evaluate_all_metrics(model, val_loader, device)
 
         for k, v in zip(history.keys(), [mse_train, mse_val, psnr_train, psnr_val, ssim_train, ssim_val]):
             history[k].append(v)

@@ -2,12 +2,12 @@ import os
 import json
 import torch
 from torch.utils.data import DataLoader
-from torch.nn.functional import mse_loss
 from math import log10
+from torchmetrics import MeanSquaredError, PeakSignalNoiseRatio
+from torchmetrics.image import StructuralSimilarityIndexMeasure
 
 from data.data_setter import get_subnet_datasets, get_imagenet_datasets
 from utils.helpers import get_device, save_images
-from torchmetrics.image import StructuralSimilarityIndexMeasure
 
 
 def evaluate_model(model_class, config_path, input_variant="clean", dataset_variant="subset", log=False):
@@ -21,7 +21,7 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
     else:
         _, val_set = get_imagenet_datasets("/raid/kszyc/datasets/ImageNet2012", image_size=config["image_size"])
 
-    batch_size = 1  # per-image evaluation
+    batch_size = 1
     num_workers = config["num_workers"]
     noise_std = config.get("noise_std", 0.1)
 
@@ -40,16 +40,16 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
 
     result_dir = os.path.join("results", config["name"] + subname, "test")
     os.makedirs(os.path.join(result_dir, "images"), exist_ok=True)
+    metrics_path = os.path.join(result_dir, "metrics.txt")
 
+    # TorchMetrics
+    mse_metric = MeanSquaredError().to(device)
+    psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(device)
     ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
 
-    metrics_path = os.path.join(result_dir, "metrics.txt")
-    f_out = open(metrics_path, "w")
-    f_out.write("idx\tmse\tpsnr\tssim\n")
+    with torch.no_grad(), open(metrics_path, "w") as f_out:
+        f_out.write("idx\tmse\tpsnr\tssim\n")
 
-    mse_vals, psnr_vals, ssim_vals = [], [], []
-
-    with torch.no_grad():
         for idx, (x, _) in enumerate(val_loader):
             x = x.to(device)
 
@@ -63,29 +63,30 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
             else:
                 x_hat = model(x)
 
-            x_hat = torch.clamp(x_hat, 0., 1.)
+            x_hat = x_hat.clamp(0, 1)
 
-            mse = mse_loss(x_hat, x, reduction='mean').item()
+            mse_metric.update(x_hat, x)
+            psnr_metric.update(x_hat, x)
+            ssim_metric.update(x_hat, x)
+
+            mse = torch.nn.functional.mse_loss(x_hat, x).item()
             psnr = 10 * log10(1.0 / (mse + 1e-10))
             ssim = ssim_metric(x_hat, x).item()
 
             f_out.write(f"{idx}\t{mse:.5f}\t{psnr:.2f}\t{ssim:.4f}\n")
 
-            mse_vals.append(mse)
-            psnr_vals.append(psnr)
-            ssim_vals.append(ssim)
+        # Final average
+        mse_avg = mse_metric.compute().item()
+        psnr_avg = psnr_metric.compute().item()
+        ssim_avg = ssim_metric.compute().item()
 
-    # Średnia
-    f_out.write(f"avg\t{sum(mse_vals)/len(mse_vals):.5f}\t"
-                f"{sum(psnr_vals)/len(psnr_vals):.2f}\t"
-                f"{sum(ssim_vals)/len(ssim_vals):.4f}\n")
-    f_out.close()
+        f_out.write(f"avg\t{mse_avg:.5f}\t{psnr_avg:.2f}\t{ssim_avg:.4f}\n")
 
     if log:
         print(f"\nEvaluation results ({input_variant}):")
-        print(f"  MSE:  {sum(mse_vals) / len(mse_vals):.6f}")
-        print(f"  PSNR: {sum(psnr_vals) / len(psnr_vals):.2f}")
-        print(f"  SSIM: {sum(ssim_vals) / len(ssim_vals):.4f}")
+        print(f"  MSE:  {mse_avg:.6f}")
+        print(f"  PSNR: {psnr_avg:.2f}")
+        print(f"  SSIM: {ssim_avg:.4f}")
 
     save_images(model, val_loader, device,
                 save_path=os.path.join(result_dir, "images", "examples.png"),

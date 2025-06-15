@@ -4,10 +4,19 @@ import time
 import torch
 import random
 from torch.utils.data import DataLoader, Subset
+from torchmetrics.image import StructuralSimilarityIndexMeasure
+from math import log10
 
 from data.data_setter import get_subnet_datasets, get_imagenet_datasets
 from utils.helpers import get_device, save_images, plot_metrics
-from utils.metrics import calculate_mse, calculate_psnr, calculate_ssim
+
+
+def compute_mse(outputs, targets):
+    return torch.nn.functional.mse_loss(outputs, targets, reduction='mean').item()
+
+
+def compute_psnr(mse):
+    return 10 * log10(1.0 / (mse + 1e-10))
 
 
 def train_model(model_class, config_path, input_variant="noisy", dataset_variant="subset", log=False):
@@ -36,6 +45,7 @@ def train_model(model_class, config_path, input_variant="noisy", dataset_variant
     optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"],
                                  weight_decay=config["weight_decay"])
     criterion = torch.nn.MSELoss()
+    ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
 
     result_dir = os.path.join("results", config["name"] + "_noisy", "training")
     os.makedirs(os.path.join(result_dir, "images"), exist_ok=True)
@@ -74,15 +84,25 @@ def train_model(model_class, config_path, input_variant="noisy", dataset_variant
         val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False,
                                 num_workers=num_workers, pin_memory=True)
 
-        model.eval()
-        with torch.no_grad():
-            mse_train = calculate_mse(model, train_loader, device, add_noise=True, noise_std=noise_std)
-            psnr_train = calculate_psnr(model, train_loader, device, add_noise=True, noise_std=noise_std)
-            ssim_train = calculate_ssim(model, train_loader, device, add_noise=True, noise_std=noise_std)
+        def evaluate(loader, add_noise):
+            mse_total = 0
+            ssim_metric.reset()
+            n = 0
+            with torch.no_grad():
+                for x, _ in loader:
+                    x = x.to(device)
+                    x_input = torch.clamp(x + noise_std * torch.randn_like(x), 0., 1.) if add_noise else x
+                    x_hat = model(x_input).clamp(0, 1)
+                    mse_total += torch.nn.functional.mse_loss(x_hat, x, reduction='sum').item()
+                    ssim_metric.update(x_hat, x)
+                    n += x.size(0)
+            mse = mse_total / (n * x[0].numel())
+            psnr = compute_psnr(mse)
+            ssim = ssim_metric.compute().item()
+            return mse, psnr, ssim
 
-            mse_val = calculate_mse(model, val_loader, device, add_noise=True, noise_std=noise_std)
-            psnr_val = calculate_psnr(model, val_loader, device, add_noise=True, noise_std=noise_std)
-            ssim_val = calculate_ssim(model, val_loader, device, add_noise=True, noise_std=noise_std)
+        mse_train, psnr_train, ssim_train = evaluate(train_loader, add_noise=True)
+        mse_val, psnr_val, ssim_val = evaluate(val_loader, add_noise=True)
 
         for k, v in zip(history.keys(), [mse_train, mse_val, psnr_train, psnr_val, ssim_train, ssim_val]):
             history[k].append(v)
@@ -101,7 +121,6 @@ def train_model(model_class, config_path, input_variant="noisy", dataset_variant
 
         plot_metrics(history, os.path.join(result_dir, "plots"))
 
-        # Early stopping
         if mse_val + 1e-6 < best_val_mse:
             best_val_mse = mse_val
             epochs_no_improve = 0

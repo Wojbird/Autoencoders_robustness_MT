@@ -1,76 +1,67 @@
 import torch
-import torch.nn.functional as F
-from math import log10
+from torchmetrics import MeanSquaredError, PeakSignalNoiseRatio
 from torchmetrics.image import StructuralSimilarityIndexMeasure
 
 
-# === ŚREDNIE METRYKI ===
-
-def calculate_mse(model, dataloader, device, add_noise=False, noise_std=0.1):
+def _compute_metrics(model, dataloader, device, noise_std=0.0, latent=False):
+    """ Unified TorchMetrics-based evaluation for AE or latent-AE. """
     model.eval()
-    total_loss = 0
-    total = 0
+    mse_metric = MeanSquaredError().to(device)
+    psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(device)
+    ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
+
     with torch.no_grad():
         for x, _ in dataloader:
             x = x.to(device)
-            x_input = torch.clamp(x + noise_std * torch.randn_like(x), 0., 1.) if add_noise else x
-            out = model(x_input)
-            total_loss += F.mse_loss(out, x, reduction='sum').item()
-            total += x.size(0)
-    return total_loss / (total * x[0].numel())
+
+            if latent:
+                z = model.encode(x)
+                z_noisy = z + noise_std * torch.randn_like(z)
+                x_hat = model.decode(z_noisy)
+            else:
+                x_input = torch.clamp(x + noise_std * torch.randn_like(x), 0., 1.) if noise_std > 0 else x
+                x_hat = model(x_input)
+
+            x_hat = x_hat.clamp(0, 1)
+            mse_metric.update(x_hat, x)
+            psnr_metric.update(x_hat, x)
+            ssim_metric.update(x_hat, x)
+
+    mse = mse_metric.compute().item()
+    psnr = psnr_metric.compute().item()
+    ssim = ssim_metric.compute().item()
+
+    return mse, psnr, ssim
+
+
+def calculate_mse(model, dataloader, device, add_noise=False, noise_std=0.1):
+    mse, _, _ = _compute_metrics(model, dataloader, device,
+                                 noise_std if add_noise else 0.0, latent=False)
+    return mse
 
 
 def calculate_psnr(model, dataloader, device, add_noise=False, noise_std=0.1):
-    mse = calculate_mse(model, dataloader, device, add_noise, noise_std)
-    return 10 * log10(1.0 / (mse + 1e-10))
+    _, psnr, _ = _compute_metrics(model, dataloader, device,
+                                  noise_std if add_noise else 0.0, latent=False)
+    return psnr
 
 
 def calculate_ssim(model, dataloader, device, add_noise=False, noise_std=0.1):
-    model.eval()
-    ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
-    total = 0
-    ssim_sum = 0
-    with torch.no_grad():
-        for x, _ in dataloader:
-            x = x.to(device)
-            x_input = torch.clamp(x + noise_std * torch.randn_like(x), 0., 1.) if add_noise else x
-            out = model(x_input).clamp(0, 1)
-            ssim_sum += ssim_metric(out, x).item() * x.size(0)
-            total += x.size(0)
-    return ssim_sum / total
+    _, _, ssim = _compute_metrics(model, dataloader, device,
+                                  noise_std if add_noise else 0.0, latent=False)
+    return ssim
 
 
 def calculate_mse_latent(model, dataloader, device, noise_std=0.1):
-    model.eval()
-    total_loss = 0
-    total = 0
-    with torch.no_grad():
-        for x, _ in dataloader:
-            x = x.to(device)
-            z = model.encode(x)
-            z_noisy = z + noise_std * torch.randn_like(z)
-            out = model.decode(z_noisy)
-            total_loss += F.mse_loss(out, x, reduction='sum').item()
-            total += x.size(0)
-    return total_loss / (total * x[0].numel())
+    mse, _, _ = _compute_metrics(model, dataloader, device, noise_std, latent=True)
+    return mse
 
 
 def calculate_psnr_latent(model, dataloader, device, noise_std=0.1):
-    mse = calculate_mse_latent(model, dataloader, device, noise_std)
-    return 10 * log10(1.0 / (mse + 1e-10))
+    _, psnr, _ = _compute_metrics(model, dataloader, device, noise_std, latent=True)
+    return psnr
 
 
 def calculate_ssim_latent(model, dataloader, device, noise_std=0.1):
-    model.eval()
-    ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
-    total = 0
-    ssim_sum = 0
-    with torch.no_grad():
-        for x, _ in dataloader:
-            x = x.to(device)
-            z = model.encode(x)
-            z_noisy = z + noise_std * torch.randn_like(z)
-            out = model.decode(z_noisy).clamp(0, 1)
-            ssim_sum += ssim_metric(out, x).item() * x.size(0)
-            total += x.size(0)
-    return ssim_sum / total
+    _, _, ssim = _compute_metrics(model, dataloader, device, noise_std, latent=True)
+    return ssim

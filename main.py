@@ -3,6 +3,8 @@ import importlib
 import os
 import sys
 from pathlib import Path
+import matplotlib
+matplotlib.use("Agg")
 
 from training.train_clean import train_model as train_clean_model
 from training.train_noisy import train_model as train_noisy_model
