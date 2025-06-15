@@ -4,9 +4,8 @@ import time
 import torch
 import random
 from torch.utils.data import DataLoader, Subset
-from torchmetrics.image import StructuralSimilarityIndexMeasure
-from torchmetrics.functional import peak_signal_noise_ratio
 import torch.nn.functional as F
+from torchmetrics.image import StructuralSimilarityIndexMeasure, PeakSignalNoiseRatio
 
 from data.data_setter import get_subnet_datasets, get_imagenet_datasets
 from utils.helpers import get_device, save_images, plot_metrics
@@ -15,9 +14,11 @@ from utils.helpers import get_device, save_images, plot_metrics
 def evaluate_all_metrics(model, dataloader, device):
     model.eval()
     ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
-    total_mse = 0
-    total_psnr = 0
-    total_ssim = 0
+    psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(device)
+
+    total_mse = 0.0
+    total_psnr = 0.0
+    total_ssim = 0.0
     total_samples = 0
 
     with torch.no_grad():
@@ -25,18 +26,9 @@ def evaluate_all_metrics(model, dataloader, device):
             x = x.to(device)
             out = model(x).clamp(0, 1)
 
-            # MSE
-            mse_batch = F.mse_loss(out, x, reduction='sum')
-            total_mse += mse_batch.item()
-
-            # PSNR
-            psnr_batch = peak_signal_noise_ratio(out, x, data_range=1.0, reduction='sum')
-            total_psnr += psnr_batch.item()
-
-            # SSIM
-            ssim_batch = ssim_metric(out, x) * x.size(0)
-            total_ssim += ssim_batch.item()
-
+            total_mse += F.mse_loss(out, x, reduction='sum').item()
+            total_psnr += psnr_metric(out, x).item() * x.size(0)
+            total_ssim += ssim_metric(out, x).item() * x.size(0)
             total_samples += x.size(0)
 
     num_pixels = x[0].numel()
@@ -98,7 +90,7 @@ def train_model(model_class, config_path, input_variant="clean", dataset_variant
             if log and i % max(1, len(train_loader) // 10) == 0:
                 elapsed = time.time() - epoch_start
                 speed = (i + 1) / elapsed
-                print(f"[Epoch {epoch+1}/{config['epochs']}] Batch {i}/{len(train_loader)} – Speed: {speed:.1f} it/s")
+                print(f"[Epoch {epoch + 1}/{config['epochs']}] Batch {i}/{len(train_loader)} – Speed: {speed:.1f} it/s")
 
         # Validation on random subset
         val_size = len(val_set)
@@ -116,15 +108,16 @@ def train_model(model_class, config_path, input_variant="clean", dataset_variant
 
         epoch_duration = time.time() - epoch_start
 
-        print(f"[Epoch {epoch+1}] MSE: {mse_val:.4f}, PSNR: {psnr_val:.2f}, SSIM: {ssim_val:.4f}")
-        print(f"[Epoch {epoch+1}] Epoch time: {epoch_duration:.2f}s")
+        print(f"[Epoch {epoch + 1}] MSE: {mse_val:.4f}, PSNR: {psnr_val:.2f}, SSIM: {ssim_val:.4f}")
+        print(f"[Epoch {epoch + 1}] Epoch time: {epoch_duration:.2f}s")
 
         save_images(model, val_loader, device,
-                    save_path=os.path.join(result_dir, "images", f"epoch_{epoch+1}.png"),
+                    save_path=os.path.join(result_dir, "images", f"epoch_{epoch + 1}.png"),
                     num_images=4)
 
         with open(metrics_path, "a") as f:
-            f.write(f"{mse_train:.5f}\t{mse_val:.5f}\t{psnr_train:.2f}\t{psnr_val:.2f}\t{ssim_train:.4f}\t{ssim_val:.4f}\n")
+            f.write(
+                f"{mse_train:.5f}\t{mse_val:.5f}\t{psnr_train:.2f}\t{psnr_val:.2f}\t{ssim_train:.4f}\t{ssim_val:.4f}\n")
 
         plot_metrics(history, os.path.join(result_dir, "plots"))
 
@@ -135,7 +128,13 @@ def train_model(model_class, config_path, input_variant="clean", dataset_variant
         else:
             epochs_no_improve += 1
             if epochs_no_improve >= patience:
-                print(f"Early stopping triggered after {epoch+1} epochs (no improvement in {patience} epochs).")
+                print(f"Early stopping triggered after {epoch + 1} epochs (no improvement in {patience} epochs).")
                 break
+
+    # Save model if path is specified
+    if "pretrained_path" in config:
+        os.makedirs(os.path.dirname(config["pretrained_path"]), exist_ok=True)
+        torch.save(model.state_dict(), config["pretrained_path"])
+        print(f"Model weights saved to: {config['pretrained_path']}")
 
     print("Training with clean input complete.")

@@ -1,6 +1,7 @@
 import torch
-from torchmetrics import MeanSquaredError, PeakSignalNoiseRatio
-from torchmetrics.image import StructuralSimilarityIndexMeasure
+import warnings
+from torchmetrics import MeanSquaredError
+from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 
 
 def _compute_metrics(model, dataloader, device, noise_std=0.0, latent=False):
@@ -23,6 +24,7 @@ def _compute_metrics(model, dataloader, device, noise_std=0.0, latent=False):
                 x_hat = model(x_input)
 
             x_hat = x_hat.clamp(0, 1)
+
             mse_metric.update(x_hat, x)
             psnr_metric.update(x_hat, x)
             ssim_metric.update(x_hat, x)

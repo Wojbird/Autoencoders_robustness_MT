@@ -4,19 +4,10 @@ import time
 import torch
 import random
 from torch.utils.data import DataLoader, Subset
-from torchmetrics.image import StructuralSimilarityIndexMeasure
-from math import log10
+from torchmetrics.image import StructuralSimilarityIndexMeasure, PeakSignalNoiseRatio
 
 from data.data_setter import get_subnet_datasets, get_imagenet_datasets
 from utils.helpers import get_device, save_images, plot_metrics
-
-
-def compute_mse(outputs, targets):
-    return torch.nn.functional.mse_loss(outputs, targets, reduction='mean').item()
-
-
-def compute_psnr(mse):
-    return 10 * log10(1.0 / (mse + 1e-10))
 
 
 def train_model(model_class, config_path, input_variant="noisy", dataset_variant="subset", log=False):
@@ -45,7 +36,6 @@ def train_model(model_class, config_path, input_variant="noisy", dataset_variant
     optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"],
                                  weight_decay=config["weight_decay"])
     criterion = torch.nn.MSELoss()
-    ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
 
     result_dir = os.path.join("results", config["name"] + "_noisy", "training")
     os.makedirs(os.path.join(result_dir, "images"), exist_ok=True)
@@ -85,19 +75,25 @@ def train_model(model_class, config_path, input_variant="noisy", dataset_variant
                                 num_workers=num_workers, pin_memory=True)
 
         def evaluate(loader, add_noise):
-            mse_total = 0
-            ssim_metric.reset()
-            n = 0
+            ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
+            psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(device)
+            mse_sum = 0
+            total = 0
+
             with torch.no_grad():
                 for x, _ in loader:
                     x = x.to(device)
                     x_input = torch.clamp(x + noise_std * torch.randn_like(x), 0., 1.) if add_noise else x
                     x_hat = model(x_input).clamp(0, 1)
-                    mse_total += torch.nn.functional.mse_loss(x_hat, x, reduction='sum').item()
+
+                    mse_sum += torch.nn.functional.mse_loss(x_hat, x, reduction='sum').item()
                     ssim_metric.update(x_hat, x)
-                    n += x.size(0)
-            mse = mse_total / (n * x[0].numel())
-            psnr = compute_psnr(mse)
+                    psnr_metric.update(x_hat, x)
+                    total += x.size(0)
+
+            num_pixels = x[0].numel()
+            mse = mse_sum / (total * num_pixels)
+            psnr = psnr_metric.compute().item()
             ssim = ssim_metric.compute().item()
             return mse, psnr, ssim
 
@@ -129,5 +125,11 @@ def train_model(model_class, config_path, input_variant="noisy", dataset_variant
             if epochs_no_improve >= patience:
                 print(f"Early stopping triggered after {epoch+1} epochs (no improvement in {patience} epochs).")
                 break
+
+    # Save model if path is specified
+    if "pretrained_path" in config:
+        os.makedirs(os.path.dirname(config["pretrained_path"]), exist_ok=True)
+        torch.save(model.state_dict(), config["pretrained_path"])
+        print(f"Model weights saved to: {config['pretrained_path']}")
 
     print("Training with noisy input complete.")

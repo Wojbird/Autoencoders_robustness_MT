@@ -1,10 +1,10 @@
 import os
 import json
 import torch
+import warnings
 from torch.utils.data import DataLoader
-from math import log10
-from torchmetrics import MeanSquaredError, PeakSignalNoiseRatio
-from torchmetrics.image import StructuralSimilarityIndexMeasure
+from torchmetrics import MeanSquaredError
+from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 
 from data.data_setter import get_subnet_datasets, get_imagenet_datasets
 from utils.helpers import get_device, save_images
@@ -21,7 +21,7 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
     else:
         _, val_set = get_imagenet_datasets("/raid/kszyc/datasets/ImageNet2012", image_size=config["image_size"])
 
-    batch_size = 1
+    batch_size = config["batch_size"]
     num_workers = config["num_workers"]
     noise_std = config.get("noise_std", 0.1)
 
@@ -29,6 +29,10 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
                             num_workers=num_workers, pin_memory=True)
 
     model = model_class(config).to(device)
+
+    if not os.path.exists(config["pretrained_path"]):
+        raise FileNotFoundError(f"Model checkpoint not found: {config['pretrained_path']}")
+
     model.load_state_dict(torch.load(config["pretrained_path"], map_location=device))
     model.eval()
 
@@ -65,17 +69,19 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
 
             x_hat = x_hat.clamp(0, 1)
 
+            # TorchMetrics update
             mse_metric.update(x_hat, x)
             psnr_metric.update(x_hat, x)
             ssim_metric.update(x_hat, x)
 
+            # Zapisywanie również metryk z F.mse_loss i log10 (dla spójności z plikami)
             mse = torch.nn.functional.mse_loss(x_hat, x).item()
-            psnr = 10 * log10(1.0 / (mse + 1e-10))
+            psnr = 10 * torch.log10(torch.tensor(1.0) / (mse + 1e-10)).item()
             ssim = ssim_metric(x_hat, x).item()
 
             f_out.write(f"{idx}\t{mse:.5f}\t{psnr:.2f}\t{ssim:.4f}\n")
 
-        # Final average
+        # Final average from TorchMetrics
         mse_avg = mse_metric.compute().item()
         psnr_avg = psnr_metric.compute().item()
         ssim_avg = ssim_metric.compute().item()

@@ -67,10 +67,16 @@ class ConvTransposeAETest(nn.Module):
         )
 
     def forward(self, x):
+        x = self.encode(x)
+        return self.decode(x)
+
+    def encode(self, x):
         x = self.pre_encoder(x)
-        x = self.encoder(x)
-        x = self.decoder(x)
-        return x
+        return self.encoder(x)
+
+    def decode(self, z):
+        return self.decoder(z)
+
 
 # Required by main.py
 model_class = ConvTransposeAETest

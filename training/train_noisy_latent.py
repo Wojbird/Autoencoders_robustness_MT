@@ -30,10 +30,12 @@ def train_model(model_class, config_path, input_variant="noisy-latent", dataset_
     best_val_mse = float("inf")
     epochs_no_improve = 0
 
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True,
+                              num_workers=num_workers, pin_memory=True)
 
     model = model_class(config).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
+    optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"],
+                                 weight_decay=config["weight_decay"])
     criterion = torch.nn.MSELoss()
 
     result_dir = os.path.join("results", config["name"] + "_noisy_latent", "training")
@@ -66,10 +68,11 @@ def train_model(model_class, config_path, input_variant="noisy-latent", dataset_
                 speed = (i + 1) / elapsed
                 print(f"[Epoch {epoch+1}/{config['epochs']}] Batch {i}/{len(train_loader)} – Speed: {speed:.1f} it/s")
 
-        # Validation on random subset
+        # === Walidacja na podzbiorze ===
         val_indices = random.sample(range(len(val_set)), max(1, int(len(val_set) * val_fraction)))
         val_subset = Subset(val_set, val_indices)
-        val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+        val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False,
+                                num_workers=num_workers, pin_memory=True)
 
         def compute_metrics(dataloader):
             mse_metric = MeanSquaredError().to(device)
@@ -119,5 +122,11 @@ def train_model(model_class, config_path, input_variant="noisy-latent", dataset_
             if epochs_no_improve >= patience:
                 print(f"Early stopping triggered after {epoch+1} epochs (no improvement in {patience} epochs).")
                 break
+
+    # === Zapis wytrenowanego modelu ===
+    if "pretrained_path" in config:
+        os.makedirs(os.path.dirname(config["pretrained_path"]), exist_ok=True)
+        torch.save(model.state_dict(), config["pretrained_path"])
+        print(f"Model weights saved to: {config['pretrained_path']}")
 
     print("Training with noisy latent space complete.")
