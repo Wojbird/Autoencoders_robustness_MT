@@ -1,7 +1,6 @@
 import os
 import json
 import torch
-import warnings
 from torch.utils.data import DataLoader
 from torchmetrics import MeanSquaredError
 from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
@@ -19,7 +18,7 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
     if dataset_variant == "subset":
         _, val_set = get_subnet_datasets("datasets/subset_imagenet/", image_size=config["image_size"])
     else:
-        _, val_set = get_imagenet_datasets("/raid/kszyc/datasets/ImageNet2012", image_size=config["image_size"])
+        _, val_set = get_imagenet_datasets("datasets/full_imagenet/", image_size=config["image_size"])
 
     batch_size = config["batch_size"]
     num_workers = config["num_workers"]
@@ -30,23 +29,21 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
 
     model = model_class(config).to(device)
 
-    if not os.path.exists(config["pretrained_path"]):
-        raise FileNotFoundError(f"Model checkpoint not found: {config['pretrained_path']}")
+    # Consistent suffix
+    suffix = f"_{input_variant}"
+    pretrained_path = config.get("pretrained_path", os.path.join("checkpoints", config["name"] + suffix + ".pth"))
 
-    model.load_state_dict(torch.load(config["pretrained_path"], map_location=device))
+    if not os.path.exists(pretrained_path):
+        raise FileNotFoundError(f"Model checkpoint not found: {pretrained_path}")
+
+    model.load_state_dict(torch.load(pretrained_path, map_location=device))
     model.eval()
 
-    subname = {
-        "clean": "",
-        "noisy": "_noisy",
-        "noisy-latent": "_noisy_latent"
-    }[input_variant]
-
-    result_dir = os.path.join("results", config["name"] + subname, "test")
+    result_dir = os.path.join("results", config["name"] + suffix, "test")
     os.makedirs(os.path.join(result_dir, "images"), exist_ok=True)
     metrics_path = os.path.join(result_dir, "metrics.txt")
 
-    # TorchMetrics
+    # TorchMetrics setup
     mse_metric = MeanSquaredError().to(device)
     psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(device)
     ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
@@ -69,19 +66,19 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
 
             x_hat = x_hat.clamp(0, 1)
 
-            # TorchMetrics update
+            # Update global metrics
             mse_metric.update(x_hat, x)
             psnr_metric.update(x_hat, x)
             ssim_metric.update(x_hat, x)
 
-            # Zapisywanie również metryk z F.mse_loss i log10 (dla spójności z plikami)
-            mse = torch.nn.functional.mse_loss(x_hat, x).item()
-            psnr = 10 * torch.log10(torch.tensor(1.0) / (mse + 1e-10)).item()
-            ssim = ssim_metric(x_hat, x).item()
+            # Optional per-image metrics
+            mse_val = torch.nn.functional.mse_loss(x_hat, x).item()
+            psnr_val = 10 * torch.log10(torch.tensor(1.0) / (mse_val + 1e-10)).item()
+            ssim_val = ssim_metric(x_hat, x).item()
 
-            f_out.write(f"{idx}\t{mse:.5f}\t{psnr:.2f}\t{ssim:.4f}\n")
+            f_out.write(f"{idx}\t{mse_val:.5f}\t{psnr_val:.2f}\t{ssim_val:.4f}\n")
 
-        # Final average from TorchMetrics
+        # Global metrics
         mse_avg = mse_metric.compute().item()
         psnr_avg = psnr_metric.compute().item()
         ssim_avg = ssim_metric.compute().item()

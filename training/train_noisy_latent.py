@@ -4,11 +4,35 @@ import time
 import torch
 import random
 from torch.utils.data import DataLoader, Subset
-from torchmetrics import MeanSquaredError, PeakSignalNoiseRatio
-from torchmetrics.image import StructuralSimilarityIndexMeasure
+from torchmetrics import MeanSquaredError
+from torchmetrics.image import StructuralSimilarityIndexMeasure, PeakSignalNoiseRatio
 
 from data.data_setter import get_subnet_datasets, get_imagenet_datasets
 from utils.helpers import get_device, save_images, plot_metrics
+
+
+def evaluate(loader, model, device, noise_std):
+    mse_metric = MeanSquaredError().to(device)
+    psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(device)
+    ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
+
+    model.eval()
+    with torch.no_grad():
+        for x, _ in loader:
+            x = x.to(device)
+            z = model.encode(x)
+            z_noisy = z + noise_std * torch.randn_like(z)
+            x_hat = model.decode(z_noisy).clamp(0, 1)
+
+            mse_metric.update(x_hat, x)
+            psnr_metric.update(x_hat, x)
+            ssim_metric.update(x_hat, x)
+
+    return (
+        mse_metric.compute().item(),
+        psnr_metric.compute().item(),
+        ssim_metric.compute().item()
+    )
 
 
 def train_model(model_class, config_path, input_variant="noisy-latent", dataset_variant="subset", log=False):
@@ -38,7 +62,8 @@ def train_model(model_class, config_path, input_variant="noisy-latent", dataset_
                                  weight_decay=config["weight_decay"])
     criterion = torch.nn.MSELoss()
 
-    result_dir = os.path.join("results", config["name"] + "_noisy_latent", "training")
+    suffix = f"_{input_variant}"
+    result_dir = os.path.join("results", config["name"] + suffix, "training")
     os.makedirs(os.path.join(result_dir, "images"), exist_ok=True)
     os.makedirs(os.path.join(result_dir, "plots"), exist_ok=True)
 
@@ -47,6 +72,9 @@ def train_model(model_class, config_path, input_variant="noisy-latent", dataset_
 
     with open(metrics_path, "w") as f:
         f.write("mse_train\tmse_val\tpsnr_train\tpsnr_val\tssim_train\tssim_val\n")
+
+    pretrained_path = config.get("pretrained_path", os.path.join("checkpoints", config["name"] + suffix + ".pth"))
+    os.makedirs(os.path.dirname(pretrained_path), exist_ok=True)
 
     for epoch in range(config["epochs"]):
         model.train()
@@ -68,33 +96,13 @@ def train_model(model_class, config_path, input_variant="noisy-latent", dataset_
                 speed = (i + 1) / elapsed
                 print(f"[Epoch {epoch+1}/{config['epochs']}] Batch {i}/{len(train_loader)} – Speed: {speed:.1f} it/s")
 
-        # === Walidacja na podzbiorze ===
         val_indices = random.sample(range(len(val_set)), max(1, int(len(val_set) * val_fraction)))
         val_subset = Subset(val_set, val_indices)
         val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False,
                                 num_workers=num_workers, pin_memory=True)
 
-        def compute_metrics(dataloader):
-            mse_metric = MeanSquaredError().to(device)
-            psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(device)
-            ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
-
-            model.eval()
-            with torch.no_grad():
-                for x, _ in dataloader:
-                    x = x.to(device)
-                    z = model.encode(x)
-                    z_noisy = z + noise_std * torch.randn_like(z)
-                    x_hat = model.decode(z_noisy).clamp(0, 1)
-
-                    mse_metric.update(x_hat, x)
-                    psnr_metric.update(x_hat, x)
-                    ssim_metric.update(x_hat, x)
-
-            return mse_metric.compute().item(), psnr_metric.compute().item(), ssim_metric.compute().item()
-
-        mse_train, psnr_train, ssim_train = compute_metrics(train_loader)
-        mse_val, psnr_val, ssim_val = compute_metrics(val_loader)
+        mse_train, psnr_train, ssim_train = evaluate(train_loader, model, device, noise_std)
+        mse_val, psnr_val, ssim_val = evaluate(val_loader, model, device, noise_std)
 
         for k, v in zip(history.keys(), [mse_train, mse_val, psnr_train, psnr_val, ssim_train, ssim_val]):
             history[k].append(v)
@@ -113,20 +121,16 @@ def train_model(model_class, config_path, input_variant="noisy-latent", dataset_
 
         plot_metrics(history, os.path.join(result_dir, "plots"))
 
-        # Early stopping
+        # Early stopping + best model saving
         if mse_val + 1e-6 < best_val_mse:
             best_val_mse = mse_val
             epochs_no_improve = 0
+            torch.save(model.state_dict(), pretrained_path)
+            print(f"[Epoch {epoch+1}] New best model saved to: {pretrained_path}")
         else:
             epochs_no_improve += 1
             if epochs_no_improve >= patience:
                 print(f"Early stopping triggered after {epoch+1} epochs (no improvement in {patience} epochs).")
                 break
-
-    # === Zapis wytrenowanego modelu ===
-    if "pretrained_path" in config:
-        os.makedirs(os.path.dirname(config["pretrained_path"]), exist_ok=True)
-        torch.save(model.state_dict(), config["pretrained_path"])
-        print(f"Model weights saved to: {config['pretrained_path']}")
 
     print("Training with noisy latent space complete.")
