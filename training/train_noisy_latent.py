@@ -1,10 +1,12 @@
 import os
 import json
+import time
 import torch
-from torch.utils.data import DataLoader
+import random
+from torch.utils.data import DataLoader, Subset
 
 from data.data_setter import get_subnet_datasets, get_imagenet_datasets
-from utils.helpers import get_device, save_metrics, save_images, plot_metrics
+from utils.helpers import get_device, save_images, plot_metrics
 from utils.metrics import calculate_mse_latent, calculate_psnr_latent, calculate_ssim_latent
 
 
@@ -22,11 +24,13 @@ def train_model(model_class, config_path, input_variant="noisy-latent", dataset_
     batch_size = config["batch_size"]
     num_workers = config["num_workers"]
     noise_std = config.get("noise_std", 0.1)
+    val_fraction = config.get("val_subset_fraction", 0.1)
+    patience = config.get("early_stopping_patience", 5)
+    best_val_mse = float("inf")
+    epochs_no_improve = 0
 
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True,
                               num_workers=num_workers, pin_memory=True)
-    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False,
-                            num_workers=num_workers, pin_memory=True)
 
     model = model_class(config).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"],
@@ -38,12 +42,17 @@ def train_model(model_class, config_path, input_variant="noisy-latent", dataset_
     os.makedirs(os.path.join(result_dir, "plots"), exist_ok=True)
 
     history = {key: [] for key in ["mse_train", "mse_val", "psnr_train", "psnr_val", "ssim_train", "ssim_val"]}
+    metrics_path = os.path.join(result_dir, "metrics.txt")
+
+    with open(metrics_path, "w") as f:
+        f.write("mse_train\tmse_val\tpsnr_train\tpsnr_val\tssim_train\tssim_val\n")
 
     for epoch in range(config["epochs"]):
         model.train()
+        epoch_start = time.time()
+
         for i, (x, _) in enumerate(train_loader):
             x = x.to(device)
-
             z = model.encode(x)
             z_noisy = z + noise_std * torch.randn_like(z)
             output = model.decode(z_noisy)
@@ -54,7 +63,17 @@ def train_model(model_class, config_path, input_variant="noisy-latent", dataset_
             optimizer.step()
 
             if log and i % max(1, len(train_loader) // 10) == 0:
-                print(f"[Epoch {epoch+1}/{config['epochs']}] Batch {i}/{len(train_loader)} – Loss: {loss.item():.4f}")
+                elapsed = time.time() - epoch_start
+                speed = (i + 1) / elapsed
+                print(f"[Epoch {epoch+1}/{config['epochs']}] Batch {i}/{len(train_loader)} – Speed: {speed:.1f} it/s")
+
+        # Validation on random subset
+        val_size = len(val_set)
+        val_subset_size = max(1, int(val_size * val_fraction))
+        val_indices = random.sample(range(val_size), val_subset_size)
+        val_subset = Subset(val_set, val_indices)
+        val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False,
+                                num_workers=num_workers, pin_memory=True)
 
         model.eval()
         with torch.no_grad():
@@ -69,14 +88,28 @@ def train_model(model_class, config_path, input_variant="noisy-latent", dataset_
         for k, v in zip(history.keys(), [mse_train, mse_val, psnr_train, psnr_val, ssim_train, ssim_val]):
             history[k].append(v)
 
-        if log:
-            print(f"[Epoch {epoch+1}] MSE: {mse_val:.4f}, PSNR: {psnr_val:.2f}, SSIM: {ssim_val:.4f}")
+        epoch_duration = time.time() - epoch_start
+
+        print(f"[Epoch {epoch+1}] MSE: {mse_val:.4f}, PSNR: {psnr_val:.2f}, SSIM: {ssim_val:.4f}")
+        print(f"[Epoch {epoch+1}] Epoch time: {epoch_duration:.2f}s")
 
         save_images(model, val_loader, device,
                     save_path=os.path.join(result_dir, "images", f"epoch_{epoch+1}.png"),
                     num_images=4, latent_noise=True, noise_std=noise_std)
 
-    save_metrics(history, os.path.join(result_dir, "metrics.txt"))
-    plot_metrics(history, os.path.join(result_dir, "plots"))
+        with open(metrics_path, "a") as f:
+            f.write(f"{mse_train:.5f}\t{mse_val:.5f}\t{psnr_train:.2f}\t{psnr_val:.2f}\t{ssim_train:.4f}\t{ssim_val:.4f}\n")
+
+        plot_metrics(history, os.path.join(result_dir, "plots"))
+
+        # Early stopping
+        if mse_val + 1e-6 < best_val_mse:
+            best_val_mse = mse_val
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+            if epochs_no_improve >= patience:
+                print(f"Early stopping triggered after {epoch+1} epochs (no improvement in {patience} epochs).")
+                break
 
     print("Training with noisy latent space complete.")
