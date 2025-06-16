@@ -1,8 +1,8 @@
 {
-  "name": "conv_transpose_ae_512",
+  "name": "residual_ae_512",
   "image_size": 224,
   "image_channels": 3,
-  "latent_dim": 512,
+  "latent_dim": 256,
   "batch_size": 64,
   "num_workers": 8,
   "epochs": 100,

@@ -7,10 +7,10 @@ class ResBlock(nn.Module):
         super().__init__()
         self.block = nn.Sequential(
             nn.Conv2d(channels, channels, kernel_size=3, padding=1),
-            nn.InstanceNorm2d(channels),
+            nn.BatchNorm2d(channels),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Conv2d(channels, channels, kernel_size=3, padding=1),
-            nn.InstanceNorm2d(channels)
+            nn.BatchNorm2d(channels)
         )
         self.leaky_relu = nn.LeakyReLU(0.1, inplace=True)
 
@@ -28,35 +28,34 @@ class ResidualAutoencoder(nn.Module):
         # Pre-encoder: 3 → 32 → 64
         self.pre_encoder = nn.Sequential(
             nn.Conv2d(image_channels, 32, kernel_size=3, padding=1),
-            nn.InstanceNorm2d(32),
+            nn.BatchNorm2d(32),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            nn.InstanceNorm2d(64),
+            nn.BatchNorm2d(64),
             nn.LeakyReLU(0.1, inplace=True)
         )
 
         # Encoder: 224 → 112 → 56 → 28 → 14 → 7
         self.encoder = nn.Sequential(
             nn.Conv2d(64, 96, kernel_size=3, stride=2, padding=1),
-            nn.InstanceNorm2d(96),
+            nn.BatchNorm2d(96),
             nn.LeakyReLU(0.1, inplace=True),
-            nn.Dropout2d(0.2),
             ResBlock(96),
 
             nn.Conv2d(96, 128, kernel_size=3, stride=2, padding=1),
-            nn.InstanceNorm2d(128),
+            nn.BatchNorm2d(128),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2),
             ResBlock(128),
 
             nn.Conv2d(128, 192, kernel_size=3, stride=2, padding=1),
-            nn.InstanceNorm2d(192),
+            nn.BatchNorm2d(192),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2),
             ResBlock(192),
 
             nn.Conv2d(192, latent_dim, kernel_size=3, stride=2, padding=1),
-            nn.InstanceNorm2d(latent_dim),
+            nn.BatchNorm2d(latent_dim),
             nn.LeakyReLU(0.1, inplace=True),
             ResBlock(latent_dim)
         )
@@ -64,27 +63,26 @@ class ResidualAutoencoder(nn.Module):
         # Decoder: 7 → 14 → 28 → 56 → 112 → 224
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(latent_dim, 192, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.InstanceNorm2d(192),
+            nn.BatchNorm2d(192),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2),
             ResBlock(192),
 
             nn.ConvTranspose2d(192, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.InstanceNorm2d(128),
+            nn.BatchNorm2d(128),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2),
             ResBlock(128),
 
             nn.ConvTranspose2d(128, 96, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.InstanceNorm2d(96),
+            nn.BatchNorm2d(96),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2),
             ResBlock(96),
 
             nn.ConvTranspose2d(96, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.InstanceNorm2d(64),
+            nn.BatchNorm2d(64),
             nn.LeakyReLU(0.1, inplace=True),
-            nn.Dropout2d(0.2),
             ResBlock(64),
 
             nn.ConvTranspose2d(64, image_channels, kernel_size=3, stride=2, padding=1, output_padding=1),

@@ -11,60 +11,60 @@ class ConvTransposeAETest(nn.Module):
         # Pre-encoder: 3 → 8 → 16
         self.pre_encoder = nn.Sequential(
             nn.Conv2d(image_channels, 8, kernel_size=3, stride=1, padding=1),
-            nn.InstanceNorm2d(8),
+            nn.BatchNorm2d(8),
             nn.LeakyReLU(0.1, inplace=True),
 
             nn.Conv2d(8, 16, kernel_size=3, stride=1, padding=1),
-            nn.InstanceNorm2d(16),
+            nn.BatchNorm2d(16),
             nn.LeakyReLU(0.1, inplace=True),
         )
 
         # Encoder: 224 → 112 → 56 → 28 → 14 → 7
         self.encoder = nn.Sequential(
             nn.Conv2d(16, 24, kernel_size=3, stride=2, padding=1),
-            nn.InstanceNorm2d(24),
+            nn.BatchNorm2d(24),
             nn.LeakyReLU(0.1, inplace=True),
 
             nn.Conv2d(24, 32, kernel_size=3, stride=2, padding=1),
-            nn.InstanceNorm2d(32),
+            nn.BatchNorm2d(32),
             nn.LeakyReLU(0.1, inplace=True),
+            nn.Dropout2d(0.1),
 
             nn.Conv2d(32, 48, kernel_size=3, stride=2, padding=1),
-            nn.InstanceNorm2d(48),
+            nn.BatchNorm2d(48),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.1),
 
             nn.Conv2d(48, 64, kernel_size=3, stride=2, padding=1),
-            nn.InstanceNorm2d(64),
+            nn.BatchNorm2d(64),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.1),
 
             nn.Conv2d(64, latent_dim, kernel_size=3, stride=2, padding=1),
-            nn.InstanceNorm2d(latent_dim),
+            nn.BatchNorm2d(latent_dim),
             nn.LeakyReLU(0.1, inplace=True),
         )
 
         # Decoder: 7 → 14 → 28 → 56 → 112 → 224
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(latent_dim, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.InstanceNorm2d(64),
+            nn.BatchNorm2d(64),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.1),
 
             nn.ConvTranspose2d(64, 48, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.InstanceNorm2d(48),
+            nn.BatchNorm2d(48),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.1),
 
             nn.ConvTranspose2d(48, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.InstanceNorm2d(32),
+            nn.BatchNorm2d(32),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.1),
 
             nn.ConvTranspose2d(32, 24, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.InstanceNorm2d(24),
+            nn.BatchNorm2d(24),
             nn.LeakyReLU(0.1, inplace=True),
-            nn.Dropout2d(0.1),
 
             nn.ConvTranspose2d(24, image_channels, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.Sigmoid()
