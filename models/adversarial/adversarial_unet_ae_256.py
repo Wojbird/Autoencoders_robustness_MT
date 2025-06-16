@@ -38,7 +38,7 @@ class AdversarialUNetAE256(nn.Module):
         # Bottleneck (latent representation)
         self.bottleneck = UNetBlock(192, latent_dim, use_dropout=True)  # H/32 x W/32
 
-        # Decoder blocks (5 levels, skip connections)
+        # Decoder blocks (5 levels, with skip connections)
         self.up1 = nn.ConvTranspose2d(latent_dim, 192, kernel_size=2, stride=2)
         self.dec1 = UNetBlock(192 + 192, 192, use_dropout=True)
 
@@ -93,13 +93,13 @@ class AdversarialUNetAE256(nn.Module):
         z = self.encode(x)
         return self.decode(z)
 
-
 class LatentDiscriminator(nn.Module):
     def __init__(self, latent_dim=256, spatial_size=7):
         super().__init__()
+        input_dim = latent_dim * spatial_size * spatial_size
         self.net = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(latent_dim * spatial_size * spatial_size, 512),
+            nn.Linear(input_dim, 512),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Linear(512, 256),
             nn.LeakyReLU(0.2, inplace=True),
@@ -110,8 +110,7 @@ class LatentDiscriminator(nn.Module):
     def forward(self, z):
         return self.net(z)
 
-
 # Required by main.py
 model_class = AdversarialUNetAE256
-discriminator_class = LatentDiscriminator
 config_path = "configs/adversarial_unet_ae_256.json"
+AdversarialUNetAE256.discriminator_class = LatentDiscriminator

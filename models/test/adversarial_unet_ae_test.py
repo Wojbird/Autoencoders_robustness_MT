@@ -20,6 +20,8 @@ class UNetBlock(nn.Module):
         return self.block(x)
 
 class AdversarialUNetAETest(nn.Module):
+    discriminator_class = None  # placeholder, nadpiszemy niżej
+
     def __init__(self, config):
         super().__init__()
         image_channels = config["image_channels"]
@@ -111,5 +113,5 @@ class LatentDiscriminator(nn.Module):
 
 # Required by main.py
 model_class = AdversarialUNetAETest
-discriminator_class = LatentDiscriminator
 config_path = "configs/test/adversarial_unet_ae_test.json"
+AdversarialUNetAETest.discriminator_class = LatentDiscriminator
