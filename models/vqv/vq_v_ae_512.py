@@ -38,113 +38,112 @@ class VectorQuantizer(nn.Module):
         return quantized.permute(0, 3, 1, 2).contiguous(), loss
 
 
-class VQVAE2512(nn.Module):
+class VQVAE512(nn.Module):
     def __init__(self, config):
         super().__init__()
-        C = config["image_channels"]
-        self.top_dim = config["top_latent_dim"]
-        self.bottom_dim = config["bottom_latent_dim"]
-        self.top_codebook_size = config["top_num_embeddings"]
-        self.bottom_codebook_size = config["bottom_num_embeddings"]
-        self.commitment_cost = config.get("commitment_cost", 0.25)
+        img_channels = config["image_channels"]
+        latent_dim = config["latent_dim"]
+        assert latent_dim == 512, "This model is designed for latent_dim=512"
+        num_embeddings = config.get("num_embeddings", 2048)
 
-        # Shared pre-encoder
+        # Pre-encoder
         self.pre_encoder = nn.Sequential(
-            nn.Conv2d(C, 32, kernel_size=3, padding=1),
+            nn.Conv2d(img_channels, 32, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(32),
             nn.LeakyReLU(0.1, inplace=True),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(64),
             nn.LeakyReLU(0.1, inplace=True),
         )
 
-        # Bottom Encoder
-        self.enc_b1 = nn.Sequential(
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # 112
+        # Encoder
+        self.enc1 = nn.Sequential(
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # 112x112
             nn.BatchNorm2d(128),
-            nn.LeakyReLU(0.1, inplace=True),
+            nn.LeakyReLU(0.1, inplace=True)
         )
-        self.enc_b2 = nn.Sequential(
-            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # 56
+        self.enc2 = nn.Sequential(
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # 56x56
             nn.BatchNorm2d(256),
             nn.LeakyReLU(0.1, inplace=True),
+            nn.Dropout2d(0.2)
         )
-        self.enc_b3 = nn.Sequential(
-            nn.Conv2d(256, self.bottom_dim, kernel_size=3, stride=2, padding=1),  # 28
-            nn.BatchNorm2d(self.bottom_dim),
-            nn.LeakyReLU(0.1, inplace=True),
-        )
-
-        # Top Encoder
-        self.enc_t1 = nn.Sequential(
-            nn.Conv2d(self.bottom_dim, 384, kernel_size=3, stride=2, padding=1),  # 14
+        self.enc3 = nn.Sequential(
+            nn.Conv2d(256, 384, kernel_size=3, stride=2, padding=1),  # 28x28
             nn.BatchNorm2d(384),
             nn.LeakyReLU(0.1, inplace=True),
+            nn.Dropout2d(0.2)
         )
-        self.enc_t2 = nn.Sequential(
-            nn.Conv2d(384, self.top_dim, kernel_size=3, stride=2, padding=1),  # 7
-            nn.BatchNorm2d(self.top_dim),
+        self.enc4 = nn.Sequential(
+            nn.Conv2d(384, 448, kernel_size=3, stride=2, padding=1),  # 14x14
+            nn.BatchNorm2d(448),
             nn.LeakyReLU(0.1, inplace=True),
+            nn.Dropout2d(0.2)
+        )
+        self.enc5 = nn.Sequential(
+            nn.Conv2d(448, latent_dim, kernel_size=3, stride=2, padding=1),  # 7x7
+            nn.BatchNorm2d(latent_dim),
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.Dropout2d(0.2)
         )
 
-        self.vq_top = VectorQuantizer(self.top_codebook_size, self.top_dim, self.commitment_cost)
-        self.vq_bottom = VectorQuantizer(self.bottom_codebook_size, self.bottom_dim, self.commitment_cost)
+        # Vector Quantization
+        self.quantizer = VectorQuantizer(num_embeddings=num_embeddings, embedding_dim=latent_dim)
 
         # Decoder
-        self.upsample_top = nn.Sequential(
-            nn.ConvTranspose2d(self.top_dim, self.bottom_dim, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.BatchNorm2d(self.bottom_dim),
-            nn.LeakyReLU(0.1, inplace=True),
-        )
-
         self.dec1 = nn.Sequential(
-            nn.ConvTranspose2d(self.bottom_dim * 2, 256, kernel_size=3, stride=2, padding=1, output_padding=1),  # 56
-            nn.BatchNorm2d(256),
+            nn.ConvTranspose2d(latent_dim, 448, kernel_size=3, stride=2, padding=1, output_padding=1),  # 14x14
+            nn.BatchNorm2d(448),
             nn.LeakyReLU(0.1, inplace=True),
         )
         self.dec2 = nn.Sequential(
-            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=1),  # 112
-            nn.BatchNorm2d(128),
+            nn.ConvTranspose2d(448 , 384, kernel_size=3, stride=2, padding=1, output_padding=1),  # 28x28
+            nn.BatchNorm2d(384),
             nn.LeakyReLU(0.1, inplace=True),
         )
         self.dec3 = nn.Sequential(
-            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),  # 224
+            nn.ConvTranspose2d(384 , 256, kernel_size=3, stride=2, padding=1, output_padding=1),  # 56x56
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.1, inplace=True)
+        )
+        self.dec4 = nn.Sequential(
+            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=1),  # 112x112
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.1, inplace=True)
+        )
+        self.dec5 = nn.Sequential(
+            nn.ConvTranspose2d(128 , 64, kernel_size=3, stride=2, padding=1, output_padding=1),  # 224x224
             nn.BatchNorm2d(64),
-            nn.LeakyReLU(0.1, inplace=True),
+            nn.LeakyReLU(0.1, inplace=True)
         )
-        self.final = nn.Sequential(
-            nn.Conv2d(64, C, kernel_size=3, padding=1),
-            nn.Sigmoid()
-        )
+
+        self.final = nn.Conv2d(64, img_channels, kernel_size=3, padding=1)
+        self.activation = nn.Sigmoid()
 
     def encode(self, x):
         x = self.pre_encoder(x)
-        z_b = self.enc_b1(x)
-        z_b = self.enc_b2(z_b)
-        z_b = self.enc_b3(z_b)
-        z_t = self.enc_t1(z_b)
-        z_t = self.enc_t2(z_t)
+        x = self.enc1(x)
+        x = self.enc2(x)
+        x = self.enc3(x)
+        x = self.enc4(x)
+        z_e = self.enc5(x)
+        z_q, self.vq_loss = self.quantizer(z_e)
+        return z_q
 
-        q_t, self.vq_loss_top = self.vq_top(z_t)
-        q_b, self.vq_loss_bottom = self.vq_bottom(z_b)
-
-        return q_t, q_b
-
-    def decode(self, q_t, q_b):
-        up_t = self.upsample_top(q_t)
-        z = torch.cat([up_t, q_b], dim=1)
+    def decode(self, z):
         z = self.dec1(z)
         z = self.dec2(z)
         z = self.dec3(z)
-        return self.final(z)
+        z = self.dec4(z)
+        z = self.dec5(z)
+        return self.activation(self.final(z))
 
     def forward(self, x):
-        q_t, q_b = self.encode(x)
-        x_recon = self.decode(q_t, q_b)
-        self.vq_loss = self.vq_loss_top + self.vq_loss_bottom
-        return x_recon
+        z_q = self.encode(x)
+        return self.decode(z_q)
 
 
 # Integracja z main.py
-model_class = VQVAE2512
-config_path = "configs/vqv2/vq_v_ae2_512.json"
+model_class = VQVAE512
+config_path = "configs/vqv/vq_v_ae_512.json"
