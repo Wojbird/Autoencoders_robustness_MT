@@ -89,7 +89,8 @@ class AdversarialUNetAE1024(nn.Module):
 
     def forward(self, x):
         z = self.encode(x)
-        return self.decode(z)
+        x_hat = self.decode(z)
+        return x_hat, z
 
 
 class LatentDiscriminator1024(nn.Module):

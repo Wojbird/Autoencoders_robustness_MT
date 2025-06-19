@@ -94,12 +94,12 @@ class ConvTransposeAE512(nn.Module):
         return x5
 
     def decode(self, z):
-        x4, x3, x2, x1 = self._skips  # reverse order
-        d1 = self.dec1(z)                            # 14x14
-        d2 = self.dec2(torch.cat([d1, x4], dim=1))   # 28x28
-        d3 = self.dec3(torch.cat([d2, x3], dim=1))   # 56x56
-        d4 = self.dec4(torch.cat([d3, x2], dim=1))   # 112x112
-        d5 = self.dec5(torch.cat([d4, x1], dim=1))   # 224x224
+        x1, x2, x3, x4 = self._skips  # correct order
+        d1 = self.dec1(z)  # 14x14
+        d2 = self.dec2(torch.cat([d1, x4], dim=1))  # 28x28
+        d3 = self.dec3(torch.cat([d2, x3], dim=1))  # 56x56
+        d4 = self.dec4(torch.cat([d3, x2], dim=1))  # 112x112
+        d5 = self.dec5(torch.cat([d4, x1], dim=1))  # 224x224
         return self.activation(self.final(d5))
 
 

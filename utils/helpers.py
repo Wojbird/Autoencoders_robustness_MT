@@ -57,7 +57,8 @@ def save_images(model, dataloader, device, save_path,
                 num_images=8, add_noise=False, latent_noise=False, noise_std=0.1):
     model.eval()
     images_shown = 0
-    rows = []
+    images_orig = []
+    images_recon = []
 
     with torch.no_grad():
         for x, _ in dataloader:
@@ -75,21 +76,28 @@ def save_images(model, dataloader, device, save_path,
             else:
                 out = model(x)
 
-            for i in range(x.shape[0]):
-                if images_shown >= num_images:
-                    break
+            # Obsłuż typ tuple
+            out_tensor = out[0] if isinstance(out, (tuple, list)) else out
+            out_tensor = out_tensor.clamp(0., 1.).cpu()
+            x_vis = x_vis.cpu()
 
-                orig = to_pil_image(x_vis[i].cpu())
-                recon = to_pil_image(torch.clamp(out[i].cpu(), 0., 1.))
-
-                pair = make_grid([x_vis[i].cpu(), torch.clamp(out[i].cpu(), 0., 1.)], nrow=2)
-                rows.append(pair)
+            for i in range(min(x_vis.shape[0], num_images - images_shown)):
+                images_orig.append(x_vis[i])
+                images_recon.append(out_tensor[i])
                 images_shown += 1
 
             if images_shown >= num_images:
                 break
 
-    grid = make_grid(rows, nrow=1, padding=10)
+    # Stwórz siatkę obrazów
+    pairs = []
+    for i in range(images_shown):
+        pair = torch.stack([images_orig[i], images_recon[i]])
+        pairs.append(pair)
+
+    all_images = torch.cat(pairs, dim=0)
+    grid = make_grid(all_images, nrow=2, padding=10)
+
     plt.figure(figsize=(num_images * 2, 4))
     plt.axis("off")
     plt.imshow(grid.permute(1, 2, 0))

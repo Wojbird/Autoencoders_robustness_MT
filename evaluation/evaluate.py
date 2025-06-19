@@ -8,7 +8,6 @@ from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMe
 from data.data_setter import get_subnet_datasets, get_imagenet_datasets
 from utils.helpers import get_device, save_images
 
-
 def evaluate_model(model_class, config_path, input_variant="clean", dataset_variant="subset", log=False):
     with open(config_path, "r") as f:
         config = json.load(f)
@@ -29,7 +28,6 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
 
     model = model_class(config).to(device)
 
-    # Consistent suffix
     suffix = f"_{input_variant}"
     pretrained_path = config.get("pretrained_path", os.path.join("checkpoints", config["name"] + suffix + ".pth"))
 
@@ -43,7 +41,6 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
     os.makedirs(os.path.join(result_dir, "images"), exist_ok=True)
     metrics_path = os.path.join(result_dir, "metrics.txt")
 
-    # TorchMetrics setup
     mse_metric = MeanSquaredError().to(device)
     psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(device)
     ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
@@ -56,29 +53,31 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
 
             if input_variant == "noisy":
                 x_input = torch.clamp(x + noise_std * torch.randn_like(x), 0., 1.)
-                x_hat = model(x_input)
+                out = model(x_input)
             elif input_variant == "noisy-latent":
                 z = model.encode(x)
-                z_noisy = z + noise_std * torch.randn_like(z)
-                x_hat = model.decode(z_noisy)
+                if isinstance(z, tuple):
+                    z_noisy = tuple(lat + noise_std * torch.randn_like(lat) for lat in z)
+                    out = model.decode(*z_noisy)
+                else:
+                    z_noisy = z + noise_std * torch.randn_like(z)
+                    out = model.decode(z_noisy)
             else:
-                x_hat = model(x)
+                out = model(x)
 
+            x_hat = out[0] if isinstance(out, (tuple, list)) else out
             x_hat = x_hat.clamp(0, 1)
 
-            # Update global metrics
             mse_metric.update(x_hat, x)
             psnr_metric.update(x_hat, x)
             ssim_metric.update(x_hat, x)
 
-            # Optional per-image metrics
             mse_val = torch.nn.functional.mse_loss(x_hat, x).item()
             psnr_val = 10 * torch.log10(torch.tensor(1.0) / (mse_val + 1e-10)).item()
             ssim_val = ssim_metric(x_hat, x).item()
 
             f_out.write(f"{idx}\t{mse_val:.5f}\t{psnr_val:.2f}\t{ssim_val:.4f}\n")
 
-        # Global metrics
         mse_avg = mse_metric.compute().item()
         psnr_avg = psnr_metric.compute().item()
         ssim_avg = ssim_metric.compute().item()
