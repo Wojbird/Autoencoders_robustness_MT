@@ -1,0 +1,20 @@
+{
+  "name": "vq_v_ae2_256",
+  "image_size": 224,
+  "image_channels": 3,
+  "latent_dim": 512,
+  "batch_size": 32,
+  "num_workers": 8,
+  "epochs": 50,
+  "learning_rate": 0.0002,
+  "weight_decay": 0.00001,
+  "noise_std": 0.1,
+  "val_subset_fraction": 0.1,
+  "early_stopping_patience": 10,
+  "num_embeddings": 1024,
+  "top_latent_dim": 32,
+  "bottom_latent_dim": 64,
+  "top_num_embeddings": 128,
+  "bottom_num_embeddings": 256,
+  "commitment_cost": 0.25
+}

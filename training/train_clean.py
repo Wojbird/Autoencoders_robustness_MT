@@ -57,7 +57,6 @@ def train_model(model_class, config_path, input_variant="clean", dataset_variant
 
     model = model_class(config).to(device)
 
-    # Check if model has adversarial discriminator
     is_adversarial = hasattr(model_class, "discriminator_class") and model_class.discriminator_class is not None
 
     if is_adversarial:
@@ -78,6 +77,8 @@ def train_model(model_class, config_path, input_variant="clean", dataset_variant
     history_keys = ["mse_train", "mse_val", "psnr_train", "psnr_val", "ssim_train", "ssim_val"]
     if is_adversarial:
         history_keys += ["loss_G", "loss_D"]
+    if hasattr(model, "quantizer"):
+        history_keys += ["vq_loss"]
 
     history = {key: [] for key in history_keys}
     metrics_path = os.path.join(result_dir, "metrics.txt")
@@ -96,50 +97,31 @@ def train_model(model_class, config_path, input_variant="clean", dataset_variant
             discriminator.train()
         epoch_start = time.time()
 
+        total_vq_loss = 0.0
+
         for i, (x, _) in enumerate(train_loader):
             x = x.to(device)
             batch_size_curr = x.size(0)
 
             if is_adversarial:
-                # Train discriminator
-                optimizer_D.zero_grad()
-                real_z = torch.randn(batch_size_curr, config["latent_dim"], x.size(2)//32, x.size(3)//32, device=device)
-                fake_z = model.encode(x).detach()
-                real_labels = torch.ones(batch_size_curr, 1, device=device)
-                fake_labels = torch.zeros(batch_size_curr, 1, device=device)
-
-                loss_D_real = criterion_adv(discriminator(real_z), real_labels)
-                loss_D_fake = criterion_adv(discriminator(fake_z), fake_labels)
-                loss_D = (loss_D_real + loss_D_fake) * 0.5
-                loss_D.backward()
-                optimizer_D.step()
-
-                # Train generator (autoencoder)
-                optimizer_G.zero_grad()
-                z = model.encode(x)
-                x_recon = model.decode(z)
-                loss_recon = criterion_recon(x_recon, x)
-                loss_adv = criterion_adv(discriminator(z), real_labels)
-                loss_G = loss_recon + 1e-3 * loss_adv
-                loss_G.backward()
-                optimizer_G.step()
+                # GAN path (not used in VQ-VAE)
+                pass
             else:
-                # Standard AE training
                 optimizer.zero_grad()
                 output = model(x)
-                loss = criterion(output, x)
-                loss.backward()
+                loss_recon = criterion(output, x)
+                loss_total = loss_recon
+                vq_loss = getattr(model, "vq_loss", torch.tensor(0.0, device=device))
+                loss_total += vq_loss
+                loss_total.backward()
                 optimizer.step()
+                total_vq_loss += vq_loss.item() * batch_size_curr
 
             if log and i % max(1, len(train_loader) // 10) == 0:
                 elapsed = time.time() - epoch_start
                 speed = (i + 1) / elapsed
-                if is_adversarial:
-                    print(f"[Epoch {epoch+1}] Batch {i}/{len(train_loader)} – Speed: {speed:.1f} it/s, loss_G: {loss_G.item():.4f}, loss_D: {loss_D.item():.4f}")
-                else:
-                    print(f"[Epoch {epoch+1}] Batch {i}/{len(train_loader)} – Speed: {speed:.1f} it/s, loss: {loss.item():.4f}")
+                print(f"[Epoch {epoch+1}] Batch {i}/{len(train_loader)} – Speed: {speed:.1f} it/s, loss: {loss_total.item():.4f}, vq_loss: {vq_loss.item():.4f}")
 
-        # Validation
         val_size = len(val_set)
         val_subset_size = max(1, int(val_size * val_fraction))
         val_indices = random.sample(range(val_size), val_subset_size)
@@ -150,7 +132,6 @@ def train_model(model_class, config_path, input_variant="clean", dataset_variant
         mse_train, psnr_train, ssim_train = evaluate(train_loader, model, device)
         mse_val, psnr_val, ssim_val = evaluate(val_loader, model, device)
 
-        # Save metrics
         history["mse_train"].append(mse_train)
         history["mse_val"].append(mse_val)
         history["psnr_train"].append(psnr_train)
@@ -158,21 +139,18 @@ def train_model(model_class, config_path, input_variant="clean", dataset_variant
         history["ssim_train"].append(ssim_train)
         history["ssim_val"].append(ssim_val)
 
-        if is_adversarial:
-            history["loss_G"].append(loss_G.item())
-            history["loss_D"].append(loss_D.item())
-
-        epoch_duration = time.time() - epoch_start
+        if hasattr(model, "vq_loss"):
+            avg_vq_loss = total_vq_loss / len(train_set)
+            history["vq_loss"].append(avg_vq_loss)
 
         print(f"[Epoch {epoch+1}] MSE: {mse_val:.4f}, PSNR: {psnr_val:.2f}, SSIM: {ssim_val:.4f}")
-        if is_adversarial:
-            print(f"[Epoch {epoch+1}] loss_G: {loss_G.item():.4f}, loss_D: {loss_D.item():.4f}")
-        print(f"[Epoch {epoch+1}] Epoch time: {epoch_duration:.2f}s")
+        if hasattr(model, "vq_loss"):
+            print(f"[Epoch {epoch+1}] Avg vq_loss: {avg_vq_loss:.4f}")
 
         save_images(model, val_loader, device,
                     save_path=os.path.join(result_dir, "images", f"epoch_{epoch+1}.png"),
                     num_images=4,
-                    latent_noise=is_adversarial,
+                    latent_noise=False,
                     noise_std=config.get("noise_std", 0.1))
 
         with open(metrics_path, "a") as f:
@@ -184,13 +162,8 @@ def train_model(model_class, config_path, input_variant="clean", dataset_variant
         if mse_val + 1e-6 < best_val_mse:
             best_val_mse = mse_val
             epochs_no_improve = 0
-            if is_adversarial:
-                torch.save(model.state_dict(), pretrained_path_G)
-                torch.save(discriminator.state_dict(), pretrained_path_D)
-                print(f"[Epoch {epoch+1}] New best adversarial models saved.")
-            else:
-                torch.save(model.state_dict(), pretrained_path_G)
-                print(f"[Epoch {epoch+1}] New best model saved.")
+            torch.save(model.state_dict(), pretrained_path_G)
+            print(f"[Epoch {epoch+1}] New best model saved.")
         else:
             epochs_no_improve += 1
             if epochs_no_improve >= patience:
