@@ -135,3 +135,21 @@ dane (źródło danych):
 5. --log (opcjonalnie)
 
 (włącza szczegółowe logowanie procesu)
+
+## Przykłady użycia
+
+1. Trening pojedynczego modelu "conv_transpose_ae_512" na czystych danych z logami:
+   ```bash
+   python main.py --mode train --model conv_transpose_ae_512 --type clean --input subset --log
+   
+2. Trening całej grupy "residual" na wszystkich typach danych:
+   ```bash
+   python main.py --mode train --model residual --type all --input subset
+   
+3. Pełny trening + ewaluacja dla modelu vq_v_ae2_512
+   ```bash
+   python main.py --mode train_test --model vq_v_ae2_512 --type clean --input full
+   
+4. Ewaluacja wszystkich modeli z folderu unet na zaszumionych danych:
+   ```bash
+   python main.py --mode test --model unet --type noisy --input subset
