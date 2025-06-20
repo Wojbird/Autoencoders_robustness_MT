@@ -34,10 +34,12 @@ Wszystkie zależności znajdują się w pliku `requirements.txt`. Główne bibli
 1. Utwórz i aktywuj środowisko:
    ```bash
    python -m venv venv
-   
+   ```
+   ```bash
    #Linux
    source venv/bin/activate   
-   
+   ```
+   ```bash
    #Windows
    venv\Scripts\activate
    ```
