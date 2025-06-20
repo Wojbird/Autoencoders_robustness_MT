@@ -53,7 +53,12 @@ Wszystkie zależności znajdują się w pliku `requirements.txt`. Główne bibli
    
 3. Zweryfikuj, że torch widzi GPU:
    ```bash
-   python -c "import torch; print(torch.cuda.is_available())"
+   python device_check.py
+   ```
+   
+4. (Opcjonalnie) w celu pobrania testoewgo Subnet of ImageNet:
+   ```bash
+   python prepare_subset.py
    ```
    
 ## Struktura katalogów
@@ -137,8 +142,10 @@ wariant (rodzaj danych wejściowych):
 4. --input 
 
 dane (źródło danych):
-- subset – podzbiór ImageNet (np. wybrane klasy),
+- subset (opcjonalnie) – podzbiór ImageNet (np. wybrane klasy),
 - full – pełny zbiór ImageNet (potrzebuje dużej ilości RAM/dysku).
+
+W celu zmiany ścierzki wczytywania danych należy zmodyfokować plik "utils/data_path.txt"!
 
 5. --log (opcjonalnie)
 

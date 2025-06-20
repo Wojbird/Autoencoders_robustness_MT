@@ -4,7 +4,9 @@ from PIL import Image
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from torch.utils.data import random_split, Dataset
+from utils.path_loader import load_imagenet_root
 
+full_root = load_imagenet_root()
 
 class ImageNetKaggle(Dataset):
     def __init__(self, root, split, transform=None):
@@ -49,6 +51,13 @@ class ImageNetKaggle(Dataset):
             x = self.transform(x)
         return x, self.targets[idx]
 
+def load_imagenet_root(path_file="imagenet_path.txt") -> str:
+    try:
+        with open(path_file, "r") as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        raise RuntimeError(f"File '{path_file}' with ImageNet path not found.")
+
 
 def get_transforms(image_size):
     return transforms.Compose([
@@ -68,7 +77,7 @@ def get_subnet_datasets(root_dir="datasets/subset_imagenet/", image_size=224, va
     return train_set, val_set
 
 
-def get_imagenet_datasets(root_dir="/raid/kszyc/datasets/ImageNet2012", image_size=224):
+def get_imagenet_datasets(root_dir=full_root, image_size=224):
     transform = get_transforms(image_size)
 
     train_set = ImageNetKaggle(root=root_dir, split="train", transform=transform)
