@@ -34,7 +34,7 @@ def discover_models(base_dir: str, target: str) -> list:
     base = Path(base_dir)
 
     if target == "all":
-        return [p for p in base.rglob("*.py") if p.name != "__init__.py"]
+        return [p for p in base.rglob("*.py")]
 
     potential_file = list(base.rglob(f"{target}.py"))
     if potential_file:
