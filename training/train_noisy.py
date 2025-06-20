@@ -42,9 +42,9 @@ def train_model(model_class, config_path, input_variant="noisy", dataset_variant
     noise_std = config.get("noise_std", 0.1)
 
     if dataset_variant == "subset":
-        train_set, val_set = get_subnet_datasets("datasets/subset_imagenet/", image_size=config["image_size"])
+        train_set, val_set = get_subnet_datasets("datasets/subset_imagenet/", image_size=config["image_size"]) # Subnet of ImageNet
     else:
-        train_set, val_set = get_imagenet_datasets("datasets/full_imagenet/", image_size=config["image_size"])
+        train_set, val_set = get_imagenet_datasets("datasets/full_imagenet/", image_size=config["image_size"]) # ImageNet
 
     batch_size = config["batch_size"]
     num_workers = config["num_workers"]
@@ -99,6 +99,7 @@ def train_model(model_class, config_path, input_variant="noisy", dataset_variant
     os.makedirs(os.path.dirname(pretrained_path_G), exist_ok=True)
     os.makedirs(os.path.dirname(pretrained_path_D), exist_ok=True)
 
+    # training
     for epoch in range(config["epochs"]):
         model.train()
         if is_adversarial:
@@ -106,22 +107,23 @@ def train_model(model_class, config_path, input_variant="noisy", dataset_variant
         print(f"\n--- Epoch {epoch + 1}/{config['epochs']} ---")
         epoch_start = time.time()
 
+        # batch iteration
         for batch_idx, (x, _) in enumerate(train_loader):
             x = x.to(device)
-            noise = torch.randn_like(x) * noise_std
-            x_noisy = (x + noise).clamp(0.0, 1.0)
+            noise = torch.randn_like(x) * noise_std # normal noise with deviation noise_std
+            x_noisy = (x + noise).clamp(0.0, 1.0) # noise + image [0, 1]
 
             if is_adversarial:
-                valid = torch.ones((x.size(0), 1), device=device)
-                fake = torch.zeros((x.size(0), 1), device=device)
+                valid = torch.ones((x.size(0), 1), device=device) # "real" labels
+                fake = torch.zeros((x.size(0), 1), device=device) # "fake" labels
 
                 optimizer_G.zero_grad()
                 x_hat_out = model(x_noisy)
-                x_hat = x_hat_out[0] if isinstance(x_hat_out, tuple) else x_hat_out
+                x_hat = x_hat_out[0] if isinstance(x_hat_out, tuple) else x_hat_out # reconstruction
                 adv_input = x_hat if disc_input == "image" else model.encode(x_hat)
-                g_loss = criterion_recon(x_hat, x) + criterion_adv(discriminator(adv_input), valid)
+                g_loss = criterion_recon(x_hat, x) + criterion_adv(discriminator(adv_input), valid) # generator loss: reconstruction + "cheating" the discriminator
                 g_loss.backward()
-                optimizer_G.step()
+                optimizer_G.step() # generator optimization step
 
                 optimizer_D.zero_grad()
                 if disc_input == "image":
@@ -134,15 +136,16 @@ def train_model(model_class, config_path, input_variant="noisy", dataset_variant
                 fake_loss = criterion_adv(discriminator(fake_input), fake)
                 d_loss = (real_loss + fake_loss) / 2
                 d_loss.backward()
-                optimizer_D.step()
+                optimizer_D.step() # discriminator optimization step
             else:
                 optimizer.zero_grad()
                 x_hat_out = model(x_noisy)
                 x_hat = x_hat_out[0] if isinstance(x_hat_out, tuple) else x_hat_out
                 loss = criterion(x_hat, x)
                 loss.backward()
-                optimizer.step()
+                optimizer.step() # generator optimization step
 
+            # logs
             if batch_idx % max(1, len(train_loader) // 10) == 0:
                 elapsed = time.time() - epoch_start
                 speed = (batch_idx + 1) / elapsed
@@ -159,6 +162,7 @@ def train_model(model_class, config_path, input_variant="noisy", dataset_variant
                         log_str += f", {k}={v:.6f}"
                 print(log_str)
 
+        # model evaluation
         train_mse, train_psnr, train_ssim = evaluate(train_loader, model, device)
         val_subset = Subset(val_set, random.sample(range(len(val_set)), int(val_fraction * len(val_set))))
         val_mse, val_psnr, val_ssim = evaluate(DataLoader(val_subset, batch_size=batch_size, shuffle=False, num_workers=num_workers), model, device)

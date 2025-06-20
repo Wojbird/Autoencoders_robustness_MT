@@ -58,7 +58,7 @@ def train_model(model_class, config_path, input_variant="noisy_latent", dataset_
 
     model = model_class(config).to(device)
 
-    # Reject models that are VQ-VAE or VQ-VAE2
+    # Reject VQ-VAE and VQ-VAE2
     if hasattr(model, "quantizer") or hasattr(model, "vq_loss") or hasattr(model, "vq_losses") or \
        hasattr(model, "top_quantizer") or hasattr(model, "bottom_quantizer") or \
        ("vq" in model.__class__.__name__.lower()):
@@ -103,6 +103,7 @@ def train_model(model_class, config_path, input_variant="noisy_latent", dataset_
     os.makedirs(os.path.dirname(pretrained_path_G), exist_ok=True)
     os.makedirs(os.path.dirname(pretrained_path_D), exist_ok=True)
 
+    # training
     for epoch in range(config["epochs"]):
         model.train()
         if is_adversarial:
@@ -110,22 +111,23 @@ def train_model(model_class, config_path, input_variant="noisy_latent", dataset_
         print(f"\n--- Epoch {epoch + 1}/{config['epochs']} ---")
         epoch_start = time.time()
 
+        # batch iteration
         for batch_idx, (x, _) in enumerate(train_loader):
             x = x.to(device)
 
             if is_adversarial:
-                valid = torch.ones((x.size(0), 1), device=device)
-                fake = torch.zeros((x.size(0), 1), device=device)
+                valid = torch.ones((x.size(0), 1), device=device) # "real" labels
+                fake = torch.zeros((x.size(0), 1), device=device) # "fake" labels
 
                 optimizer_G.zero_grad()
-                z = model.encode(x)
+                z = model.encode(x) # encode image into latent space
                 noise = torch.randn_like(z) * noise_std
-                z_noisy = z + noise
-                x_hat = model.decode(z_noisy)
+                z_noisy = z + noise # add noise
+                x_hat = model.decode(z_noisy) # recreate image from noisy encoding
                 adv_input = x_hat if disc_input == "image" else model.encode(x_hat)
                 g_loss = criterion_recon(x_hat, x) + criterion_adv(discriminator(adv_input), valid)
                 g_loss.backward()
-                optimizer_G.step()
+                optimizer_G.step() # generator optimization step
 
                 optimizer_D.zero_grad()
                 if disc_input == "image":
@@ -138,17 +140,18 @@ def train_model(model_class, config_path, input_variant="noisy_latent", dataset_
                 fake_loss = criterion_adv(discriminator(fake_input), fake)
                 d_loss = (real_loss + fake_loss) / 2
                 d_loss.backward()
-                optimizer_D.step()
+                optimizer_D.step() # discriminator optimization step
             else:
                 optimizer.zero_grad()
-                z = model.encode(x)
+                z = model.encode(x) # encode image into latent space
                 noise = torch.randn_like(z) * noise_std
-                z_noisy = z + noise
-                x_hat = model.decode(z_noisy)
+                z_noisy = z + noise # add noise
+                x_hat = model.decode(z_noisy) # recreate image from noisy encoding
                 loss = criterion(x_hat, x)
                 loss.backward()
-                optimizer.step()
+                optimizer.step() # generator optimization step
 
+            # logs
             if batch_idx % max(1, len(train_loader) // 10) == 0:
                 elapsed = time.time() - epoch_start
                 speed = (batch_idx + 1) / elapsed
@@ -159,6 +162,7 @@ def train_model(model_class, config_path, input_variant="noisy_latent", dataset_
                     log_str += f", G_loss={g_loss.item():.6f}, D_loss={d_loss.item():.6f}"
                 print(log_str)
 
+        # model evaluation
         train_mse, train_psnr, train_ssim = evaluate(train_loader, model, device)
         val_mse, val_psnr, val_ssim = evaluate(DataLoader(
             Subset(val_set, random.sample(range(len(val_set)), int(val_fraction * len(val_set)))),
