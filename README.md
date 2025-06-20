@@ -92,7 +92,7 @@ Wszystkie zależności znajdują się w pliku `requirements.txt`. Główne bibli
 │
 └── main.py                # Główny punkt wejścia – ładuje konfigurację i uruchamia trening lub ewaluację
 
-## Sposób uruchomienia
+## Instrukcja użytkowania:
 
 ### Argumenty:
 
