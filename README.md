@@ -1,5 +1,5 @@
 # Autoencoders Robustness
-Badanie odporności różnych architektur autoenkoderów (AE, U-Net, VQ-VAE) na szum i zdolności rekonstrukcji przy użyciu zbioru ImageNet.
+Badanie odporności różnych architektur autoenkoderów na szum i zdolności rekonstrukcji przy użyciu zbioru ImageNet.
 
 ## Spis treści
 1. [Opis](#opis)
