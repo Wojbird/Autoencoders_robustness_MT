@@ -3,12 +3,11 @@ Badanie odporności różnych architektur autoenkoderów (AE, U-Net, VQ-VAE) na 
 
 ## Spis treści
 1. [Opis](#opis)
-2. [Wymagania](#wymagania)
-3. [Struktura projektu](#struktura-projektu)
-4. [Sposób uruchomienia](#sposób-uruchomienia)
-5. [Trening i ewaluacja](#trening-i-ewaluacja)
-6. [Wyniki](#wyniki)
-7. [Licencja](#licencja)
+2. [Wymagania i instalacja](#wymagania-i-instalacja)
+3. [Struktura katalogów](#struktura-katalogow)
+4. [Instrukcja użytkowania](#instrukcja-uzytkowania)
+5. [Sposób uruchomienia](#Sposob-uruchomienia)
+6. 
 
 ## Opis
 
@@ -40,6 +39,7 @@ Wszystkie zależności znajdują się w pliku `requirements.txt`. Główne bibli
    
    #Linux
    source venv/bin/activate   
+   
    #Windows
    source venv\Scripts\activate
    
@@ -136,7 +136,7 @@ dane (źródło danych):
 
 (włącza szczegółowe logowanie procesu)
 
-## Przykłady użycia
+### Przykłady użycia
 
 1. Trening pojedynczego modelu "conv_transpose_ae_512" na czystych danych z logami:
    ```bash
