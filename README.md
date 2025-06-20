@@ -39,12 +39,14 @@ Wszystkie zależności znajdują się w pliku `requirements.txt`. Główne bibli
    source venv/bin/activate   
    
    #Windows
-   source venv\Scripts\activate
+   venv\Scripts\activate
    ```
    
 2. Zainstaluj wymagane biblioteki:
    ```bash
    pip install -r requirements.txt
+   
+   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
    ```
    
 3. Zweryfikuj, że torch widzi GPU:
