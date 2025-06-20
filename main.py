@@ -20,8 +20,8 @@ def parse_args():
                         help="Operation mode")
     parser.add_argument("--model", required=True,
                         help="Model name (e.g., ae_convtranspose512_7x7), group (e.g., conv), or 'all'")
-    parser.add_argument("--type", choices=["clean", "noisy", "noisy-latent", "all"], default="clean",
-                        help="Input variant: clean, noisy, noisy-latent or all (runs all three)")
+    parser.add_argument("--type", choices=["clean", "noisy", "noisy_latent", "all"], default="clean",
+                        help="Input variant: clean, noisy, noisy_latent or all (runs all three)")
     parser.add_argument("--input", choices=["subset", "full"], default="subset",
                         help="Dataset source: subset or full")
     parser.add_argument("--log", action="store_true",
@@ -65,7 +65,7 @@ def import_model(module_path: Path):
 
 def run(mode, model_path: Path, input_type, dataset_type, log):
     if input_type == "all":
-        for variant in ["clean", "noisy", "noisy-latent"]:
+        for variant in ["clean", "noisy", "noisy_latent"]:
             print(f"\n--- Running {mode} for input type: {variant} ---")
             run(mode, model_path, variant, dataset_type, log)
         return
@@ -79,7 +79,7 @@ def run(mode, model_path: Path, input_type, dataset_type, log):
         elif input_type == "noisy":
             train_noisy_model(model_class, config_path, input_variant=input_type,
                               dataset_variant=dataset_type, log=log)
-        elif input_type == "noisy-latent":
+        elif input_type == "noisy_latent":
             train_noisy_latent_model(model_class, config_path, input_variant=input_type,
                                      dataset_variant=dataset_type, log=log)
         else:

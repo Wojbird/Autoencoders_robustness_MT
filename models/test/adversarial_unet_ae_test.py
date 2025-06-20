@@ -20,7 +20,7 @@ class UNetBlock(nn.Module):
         return self.block(x)
 
 class AdversarialUNetAETest(nn.Module):
-    discriminator_class = None  # placeholder, nadpiszemy niżej
+    discriminator_class = None  # Nadpisane poniżej
 
     def __init__(self, config):
         super().__init__()
@@ -93,26 +93,35 @@ class AdversarialUNetAETest(nn.Module):
         return x_hat, z
 
 
-class LatentDiscriminator(nn.Module):
-    def __init__(self, latent_dim=64, spatial_size=7):
+class ImageDiscriminator(nn.Module):
+    def __init__(self, in_channels=3):
         super().__init__()
-        input_dim = latent_dim * spatial_size * spatial_size
-
         self.net = nn.Sequential(
+            nn.Conv2d(in_channels, 64, kernel_size=3, stride=2, padding=1),  # 112x112
+            nn.LeakyReLU(0.2, inplace=True),
+
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # 56x56
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2, inplace=True),
+
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # 28x28
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2, inplace=True),
+
+            nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1),  # 14x14
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, inplace=True),
+
+            nn.AdaptiveAvgPool2d(1),  # (B, 512, 1, 1)
             nn.Flatten(),
-            nn.Linear(input_dim, 512),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(512, 256),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(256, 1),
+            nn.Linear(512, 1),
             nn.Sigmoid()
         )
 
-    def forward(self, z):
-        return self.net(z)
-
+    def forward(self, x):
+        return self.net(x)
 
 # Required by main.py
 model_class = AdversarialUNetAETest
 config_path = "configs/test/adversarial_unet_ae_test.json"
-AdversarialUNetAETest.discriminator_class = LatentDiscriminator
+AdversarialUNetAETest.discriminator_class = ImageDiscriminator

@@ -94,4 +94,4 @@ class UNetAETest(nn.Module):
 
 # Required by main.py
 model_class = UNetAETest
-config_path = "configs/test/adversarial_unet_ae_test.json"
+config_path = "configs/test/unet_ae_test.json"

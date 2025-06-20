@@ -144,6 +144,16 @@ class VQVAE21024(nn.Module):
         self.vq_loss = self.vq_loss_top + self.vq_loss_bottom
         return x_recon
 
+    def get_vq_losses(self):
+        result = {}
+        if hasattr(self, "vq_loss"):
+            result["vq_loss"] = self.vq_loss.item()
+        if hasattr(self, "vq_loss_top"):
+            result["top_vq_loss"] = self.vq_loss_top.item()
+        if hasattr(self, "vq_loss_bottom"):
+            result["bottom_vq_loss"] = self.vq_loss_bottom.item()
+        return result
+
 
 # Required by main.py
 model_class = VQVAE21024

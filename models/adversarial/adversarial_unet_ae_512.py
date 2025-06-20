@@ -29,7 +29,7 @@ class AdversarialUNetAE512(nn.Module):
         self.pool = nn.MaxPool2d(2)
 
         # Encoder: 5 levels
-        self.enc1 = UNetBlock(image_channels, 64)        # no dropout in shallowest
+        self.enc1 = UNetBlock(image_channels, 64)
         self.enc2 = UNetBlock(64, 128)
         self.enc3 = UNetBlock(128, 256, use_dropout=True)
         self.enc4 = UNetBlock(256, 384, use_dropout=True)
@@ -58,31 +58,31 @@ class AdversarialUNetAE512(nn.Module):
         self.activation = nn.Sigmoid()
 
     def encode(self, x):
-        e1 = self.enc1(x)                # H x W
-        e2 = self.enc2(self.pool(e1))   # H/2 x W/2
-        e3 = self.enc3(self.pool(e2))   # H/4 x W/4
-        e4 = self.enc4(self.pool(e3))   # H/8 x W/8
-        e5 = self.enc5(self.pool(e4))   # H/16 x W/16
-        z = self.bottleneck(self.pool(e5))  # H/32 x W/32
+        e1 = self.enc1(x)
+        e2 = self.enc2(self.pool(e1))
+        e3 = self.enc3(self.pool(e2))
+        e4 = self.enc4(self.pool(e3))
+        e5 = self.enc5(self.pool(e4))
+        z = self.bottleneck(self.pool(e5))
         self._skips = [e1, e2, e3, e4, e5]
         return z
 
     def decode(self, z):
         e1, e2, e3, e4, e5 = self._skips
 
-        d1 = self.up1(z)                        # H/16 x W/16
+        d1 = self.up1(z)
         d1 = self.dec1(torch.cat([d1, e5], dim=1))
 
-        d2 = self.up2(d1)                       # H/8 x W/8
+        d2 = self.up2(d1)
         d2 = self.dec2(torch.cat([d2, e4], dim=1))
 
-        d3 = self.up3(d2)                       # H/4 x W/4
+        d3 = self.up3(d2)
         d3 = self.dec3(torch.cat([d3, e3], dim=1))
 
-        d4 = self.up4(d3)                       # H/2 x W/2
+        d4 = self.up4(d3)
         d4 = self.dec4(torch.cat([d4, e2], dim=1))
 
-        d5 = self.up5(d4)                       # H x W
+        d5 = self.up5(d4)
         d5 = self.dec5(torch.cat([d5, e1], dim=1))
 
         out = self.activation(self.final(d5))
@@ -93,24 +93,33 @@ class AdversarialUNetAE512(nn.Module):
         x_hat = self.decode(z)
         return x_hat, z
 
-class LatentDiscriminator(nn.Module):
-    def __init__(self, latent_dim=512, spatial_size=7):
+# ----------- DYSKRYMINATOR OBRAZOWY ------------
+
+class ImageDiscriminator(nn.Module):
+    def __init__(self, image_channels=3):
         super().__init__()
-        input_dim = latent_dim * spatial_size * spatial_size
         self.net = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(input_dim, 512),
+            nn.Conv2d(image_channels, 64, kernel_size=3, stride=2, padding=1),  # 112x112
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(512, 256),
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # 56x56
+            nn.BatchNorm2d(128),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(256, 1),
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # 28x28
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1),  # 14x14
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.AdaptiveAvgPool2d(1),  # [B, 512, 1, 1]
+            nn.Flatten(),  # [B, 512]
+            nn.Linear(512, 1),
             nn.Sigmoid()
         )
 
-    def forward(self, z):
-        return self.net(z)
+    def forward(self, x):
+        return self.net(x)
 
 # Required by main.py
 model_class = AdversarialUNetAE512
 config_path = "configs/adversarial_unet_ae_512.json"
-AdversarialUNetAE512.discriminator_class = LatentDiscriminator
+AdversarialUNetAE512.discriminator_class = ImageDiscriminator

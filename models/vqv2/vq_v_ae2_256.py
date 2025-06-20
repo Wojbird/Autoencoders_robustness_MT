@@ -143,6 +143,16 @@ class VQVAE2256(nn.Module):
         self.vq_loss = self.vq_loss_top + self.vq_loss_bottom
         return x_hat
 
+    def get_vq_losses(self):
+        result = {}
+        if hasattr(self, "vq_loss"):
+            result["vq_loss"] = self.vq_loss.item()
+        if hasattr(self, "vq_loss_top"):
+            result["top_vq_loss"] = self.vq_loss_top.item()
+        if hasattr(self, "vq_loss_bottom"):
+            result["bottom_vq_loss"] = self.vq_loss_bottom.item()
+        return result
+
 
 model_class = VQVAE2256
 config_path = "configs/vqv2/vq_v_ae2_256.json"

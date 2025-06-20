@@ -146,6 +146,12 @@ class VQVAE256(nn.Module):
         z_q = self.encode(x)
         return self.decode(z_q)
 
+    def get_vq_losses(self):
+        result = {}
+        if hasattr(self, "vq_loss"):
+            result["vq_loss"] = self.vq_loss.item()
+        return result
+
 
 # Integration with main.py
 model_class = VQVAE256

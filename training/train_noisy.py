@@ -11,8 +11,7 @@ from torchmetrics.image import StructuralSimilarityIndexMeasure, PeakSignalNoise
 from data.data_setter import get_subnet_datasets, get_imagenet_datasets
 from utils.helpers import get_device, save_images, plot_metrics
 
-
-def evaluate(loader, model, device, noise_std):
+def evaluate(loader, model, device):
     mse_metric = MeanSquaredError().to(device)
     psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(device)
     ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
@@ -21,9 +20,10 @@ def evaluate(loader, model, device, noise_std):
     with torch.no_grad():
         for x, _ in loader:
             x = x.to(device)
-            x_noisy = torch.clamp(x + noise_std * torch.randn_like(x), 0., 1.)
-            x_hat = model(x_noisy).clamp(0, 1)
-
+            x_hat = model(x)
+            if isinstance(x_hat, tuple):
+                x_hat = x_hat[0]
+            x_hat = x_hat.clamp(0, 1)
             mse_metric.update(x_hat, x)
             psnr_metric.update(x_hat, x)
             ssim_metric.update(x_hat, x)
@@ -34,12 +34,12 @@ def evaluate(loader, model, device, noise_std):
         ssim_metric.compute().item()
     )
 
-
 def train_model(model_class, config_path, input_variant="noisy", dataset_variant="subset", log=False):
     with open(config_path, "r") as f:
         config = json.load(f)
 
     device = get_device()
+    noise_std = config.get("noise_std", 0.1)
 
     if dataset_variant == "subset":
         train_set, val_set = get_subnet_datasets("datasets/subset_imagenet/", image_size=config["image_size"])
@@ -48,9 +48,8 @@ def train_model(model_class, config_path, input_variant="noisy", dataset_variant
 
     batch_size = config["batch_size"]
     num_workers = config["num_workers"]
-    noise_std = config.get("noise_std", 0.1)
-    val_fraction = config.get("val_subset_fraction", 0.1)
     patience = config.get("early_stopping_patience", 5)
+    val_fraction = config.get("val_subset_fraction", 0.1)
     best_val_mse = float("inf")
     epochs_no_improve = 0
 
@@ -59,11 +58,17 @@ def train_model(model_class, config_path, input_variant="noisy", dataset_variant
 
     model = model_class(config).to(device)
 
-    # Check if model has adversarial discriminator
     is_adversarial = hasattr(model_class, "discriminator_class") and model_class.discriminator_class is not None
 
     if is_adversarial:
-        discriminator = model_class.discriminator_class(latent_dim=config["latent_dim"]).to(device)
+        disc_class = model_class.discriminator_class
+        if "latent_dim" in disc_class.__init__.__code__.co_varnames:
+            discriminator = disc_class(latent_dim=config["latent_dim"]).to(device)
+            disc_input = "latent"
+        else:
+            discriminator = disc_class().to(device)
+            disc_input = "image"
+
         optimizer_G = torch.optim.Adam(model.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
         optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
         criterion_recon = nn.MSELoss()
@@ -75,11 +80,13 @@ def train_model(model_class, config_path, input_variant="noisy", dataset_variant
     suffix = f"_{input_variant}"
     result_dir = os.path.join("results", config["name"] + suffix, "training")
     os.makedirs(os.path.join(result_dir, "images"), exist_ok=True)
-    os.makedirs(os.path.join(result_dir, "plots"), exist_ok=True)
 
     history_keys = ["mse_train", "mse_val", "psnr_train", "psnr_val", "ssim_train", "ssim_val"]
     if is_adversarial:
         history_keys += ["loss_G", "loss_D"]
+    if hasattr(model, "get_vq_losses"):
+        example_losses = model.get_vq_losses()
+        history_keys += list(example_losses.keys())
 
     history = {key: [] for key in history_keys}
     metrics_path = os.path.join(result_dir, "metrics.txt")
@@ -96,104 +103,101 @@ def train_model(model_class, config_path, input_variant="noisy", dataset_variant
         model.train()
         if is_adversarial:
             discriminator.train()
+        print(f"\n--- Epoch {epoch + 1}/{config['epochs']} ---")
         epoch_start = time.time()
 
-        for i, (x, _) in enumerate(train_loader):
+        for batch_idx, (x, _) in enumerate(train_loader):
             x = x.to(device)
-            batch_size_curr = x.size(0)
-            x_noisy = torch.clamp(x + noise_std * torch.randn_like(x), 0., 1.)
+            noise = torch.randn_like(x) * noise_std
+            x_noisy = (x + noise).clamp(0.0, 1.0)
 
             if is_adversarial:
-                # Train discriminator
-                optimizer_D.zero_grad()
-                real_z = torch.randn(batch_size_curr, config["latent_dim"], x.size(2)//32, x.size(3)//32, device=device)
-                fake_z = model.encode(x_noisy).detach()
-                real_labels = torch.ones(batch_size_curr, 1, device=device)
-                fake_labels = torch.zeros(batch_size_curr, 1, device=device)
+                valid = torch.ones((x.size(0), 1), device=device)
+                fake = torch.zeros((x.size(0), 1), device=device)
 
-                loss_D_real = criterion_adv(discriminator(real_z), real_labels)
-                loss_D_fake = criterion_adv(discriminator(fake_z), fake_labels)
-                loss_D = (loss_D_real + loss_D_fake) * 0.5
-                loss_D.backward()
-                optimizer_D.step()
-
-                # Train generator (autoencoder)
                 optimizer_G.zero_grad()
-                z = model.encode(x_noisy)
-                x_recon = model.decode(z)
-                loss_recon = criterion_recon(x_recon, x)
-                loss_adv = criterion_adv(discriminator(z), real_labels)
-                loss_G = loss_recon + 1e-3 * loss_adv
-                loss_G.backward()
+                x_hat_out = model(x_noisy)
+                x_hat = x_hat_out[0] if isinstance(x_hat_out, tuple) else x_hat_out
+                adv_input = x_hat if disc_input == "image" else model.encode(x_hat)
+                g_loss = criterion_recon(x_hat, x) + criterion_adv(discriminator(adv_input), valid)
+                g_loss.backward()
                 optimizer_G.step()
+
+                optimizer_D.zero_grad()
+                if disc_input == "image":
+                    real_input = x
+                    fake_input = x_hat.detach()
+                else:
+                    real_input = model.encode(x).detach()
+                    fake_input = model.encode(x_hat).detach()
+                real_loss = criterion_adv(discriminator(real_input), valid)
+                fake_loss = criterion_adv(discriminator(fake_input), fake)
+                d_loss = (real_loss + fake_loss) / 2
+                d_loss.backward()
+                optimizer_D.step()
             else:
-                # Standard AE training
                 optimizer.zero_grad()
-                output = model(x_noisy)
-                loss = criterion(output, x)
+                x_hat_out = model(x_noisy)
+                x_hat = x_hat_out[0] if isinstance(x_hat_out, tuple) else x_hat_out
+                loss = criterion(x_hat, x)
                 loss.backward()
                 optimizer.step()
 
-            if log and i % max(1, len(train_loader) // 10) == 0:
+            if batch_idx % max(1, len(train_loader) // 10) == 0:
                 elapsed = time.time() - epoch_start
-                speed = (i + 1) / elapsed
+                speed = (batch_idx + 1) / elapsed
+                log_str = f"[Epoch {epoch+1}/{config['epochs']}] [Batch {batch_idx}/{len(train_loader)}] Speed: {speed:.2f} it/s"
+
+                recon_loss = nn.functional.mse_loss(x_hat, x)
+                log_str += f" loss={recon_loss.item():.6f}"
+
                 if is_adversarial:
-                    print(f"[Epoch {epoch+1}] Batch {i}/{len(train_loader)} – Speed: {speed:.1f} it/s, loss_G: {loss_G.item():.4f}, loss_D: {loss_D.item():.4f}")
-                else:
-                    print(f"[Epoch {epoch+1}] Batch {i}/{len(train_loader)} – Speed: {speed:.1f} it/s, loss: {loss.item():.4f}")
+                    log_str += f", G_loss={g_loss.item():.6f}, D_loss={d_loss.item():.6f}"
+                if hasattr(model, "get_vq_losses"):
+                    vq_losses = model.get_vq_losses()
+                    for k, v in vq_losses.items():
+                        log_str += f", {k}={v:.6f}"
+                print(log_str)
 
-        # Validation
-        val_size = len(val_set)
-        val_subset_size = max(1, int(val_size * val_fraction))
-        val_indices = random.sample(range(val_size), val_subset_size)
-        val_subset = Subset(val_set, val_indices)
-        val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False,
-                                num_workers=num_workers, pin_memory=True)
+        train_mse, train_psnr, train_ssim = evaluate(train_loader, model, device)
+        val_subset = Subset(val_set, random.sample(range(len(val_set)), int(val_fraction * len(val_set))))
+        val_mse, val_psnr, val_ssim = evaluate(DataLoader(val_subset, batch_size=batch_size, shuffle=False, num_workers=num_workers), model, device)
 
-        mse_train, psnr_train, ssim_train = evaluate(train_loader, model, device, noise_std)
-        mse_val, psnr_val, ssim_val = evaluate(val_loader, model, device, noise_std)
+        val_loader_preview = DataLoader(val_set, batch_size=8, shuffle=False, num_workers=num_workers)
+        save_images(model, val_loader_preview, device, os.path.join(result_dir, "images", f"epoch_{epoch+1}.png"))
 
-        # Save metrics
-        for k, v in zip(history.keys(), [mse_train, mse_val, psnr_train, psnr_val, ssim_train, ssim_val]):
-            history[k].append(v)
-
+        history["mse_train"].append(train_mse)
+        history["mse_val"].append(val_mse)
+        history["psnr_train"].append(train_psnr)
+        history["psnr_val"].append(val_psnr)
+        history["ssim_train"].append(train_ssim)
+        history["ssim_val"].append(val_ssim)
         if is_adversarial:
-            history["loss_G"].append(loss_G.item())
-            history["loss_D"].append(loss_D.item())
-
-        epoch_duration = time.time() - epoch_start
-
-        print(f"[Epoch {epoch+1}] MSE: {mse_val:.4f}, PSNR: {psnr_val:.2f}, SSIM: {ssim_val:.4f}")
-        if is_adversarial:
-            print(f"[Epoch {epoch+1}] loss_G: {loss_G.item():.4f}, loss_D: {loss_D.item():.4f}")
-        print(f"[Epoch {epoch+1}] Epoch time: {epoch_duration:.2f}s")
-
-        save_images(model, val_loader, device,
-                    save_path=os.path.join(result_dir, "images", f"epoch_{epoch+1}.png"),
-                    num_images=4,
-                    latent_noise=is_adversarial,
-                    noise_std=noise_std)
+            history["loss_G"].append(g_loss.item())
+            history["loss_D"].append(d_loss.item())
+        if hasattr(model, "get_vq_losses"):
+            vq_losses = model.get_vq_losses()
+            for k, v in vq_losses.items():
+                if k in history:
+                    history[k].append(v)
 
         with open(metrics_path, "a") as f:
-            values = [history[key][-1] for key in history_keys]
-            f.write("\t".join(f"{v:.5f}" if isinstance(v, float) else str(v) for v in values) + "\n")
+            row = [str(history[k][-1]) for k in history_keys]
+            f.write("\t".join(row) + "\n")
 
-        plot_metrics(history, os.path.join(result_dir, "plots"))
+        print("[Metrics]", f"Train MSE: {train_mse:.6f}", f"Train PSNR: {train_psnr:.6f}", f"Train SSIM: {train_ssim:.6f}")
+        print("[Metrics]", f"Val MSE: {val_mse:.6f}", f"Val PSNR: {val_psnr:.6f}", f"Val SSIM: {val_ssim:.6f}")
 
-        if mse_val + 1e-6 < best_val_mse:
-            best_val_mse = mse_val
-            epochs_no_improve = 0
+        if val_mse < best_val_mse:
+            best_val_mse = val_mse
+            torch.save(model.state_dict(), pretrained_path_G)
             if is_adversarial:
-                torch.save(model.state_dict(), pretrained_path_G)
                 torch.save(discriminator.state_dict(), pretrained_path_D)
-                print(f"[Epoch {epoch+1}] New best adversarial models saved.")
-            else:
-                torch.save(model.state_dict(), pretrained_path_G)
-                print(f"[Epoch {epoch+1}] New best model saved.")
+            epochs_no_improve = 0
         else:
             epochs_no_improve += 1
             if epochs_no_improve >= patience:
-                print(f"Early stopping triggered after {epoch+1} epochs (no improvement in {patience} epochs).")
+                print("[INFO] Early stopping triggered.")
                 break
 
-    print(f"Training with {input_variant} input complete.")
+    plot_metrics(history, result_dir)

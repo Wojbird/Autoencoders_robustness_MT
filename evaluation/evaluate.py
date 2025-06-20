@@ -12,6 +12,25 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
     with open(config_path, "r") as f:
         config = json.load(f)
 
+    suffix = f"_{input_variant}"
+    pretrained_path = config.get("pretrained_path", os.path.join("checkpoints", config["name"] + suffix + ".pth"))
+
+    # Wczesne pominięcie: model nieobsługiwany w noisy-latent
+    if input_variant == "noisy-latent":
+        test_model = model_class(config)
+        if hasattr(test_model, "quantizer") or hasattr(test_model, "top_quantizer"):
+            print(f"[INFO] Skipping evaluation: Model {test_model.__class__.__name__} is not supported in noisy_latent mode.")
+            return
+        if not os.path.exists(pretrained_path):
+            print(f"[INFO] Skipping evaluation: Checkpoint not found: {pretrained_path}")
+            return
+        model = test_model.to(get_device())
+    else:
+        if not os.path.exists(pretrained_path):
+            print(f"[INFO] Skipping evaluation: Checkpoint not found: {pretrained_path}")
+            return
+        model = model_class(config).to(get_device())
+
     device = get_device()
 
     if dataset_variant == "subset":
@@ -25,14 +44,6 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
 
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False,
                             num_workers=num_workers, pin_memory=True)
-
-    model = model_class(config).to(device)
-
-    suffix = f"_{input_variant}"
-    pretrained_path = config.get("pretrained_path", os.path.join("checkpoints", config["name"] + suffix + ".pth"))
-
-    if not os.path.exists(pretrained_path):
-        raise FileNotFoundError(f"Model checkpoint not found: {pretrained_path}")
 
     model.load_state_dict(torch.load(pretrained_path, map_location=device))
     model.eval()
@@ -76,19 +87,19 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
             psnr_val = 10 * torch.log10(torch.tensor(1.0) / (mse_val + 1e-10)).item()
             ssim_val = ssim_metric(x_hat, x).item()
 
-            f_out.write(f"{idx}\t{mse_val:.5f}\t{psnr_val:.2f}\t{ssim_val:.4f}\n")
+            f_out.write(f"{idx}\t{mse_val:.6f}\t{psnr_val:.6f}\t{ssim_val:.6f}\n")
 
         mse_avg = mse_metric.compute().item()
         psnr_avg = psnr_metric.compute().item()
         ssim_avg = ssim_metric.compute().item()
 
-        f_out.write(f"avg\t{mse_avg:.5f}\t{psnr_avg:.2f}\t{ssim_avg:.4f}\n")
+        f_out.write(f"avg\t{mse_avg:.6f}\t{psnr_avg:.6f}\t{ssim_avg:.6f}\n")
 
     if log:
         print(f"\nEvaluation results ({input_variant}):")
         print(f"  MSE:  {mse_avg:.6f}")
-        print(f"  PSNR: {psnr_avg:.2f}")
-        print(f"  SSIM: {ssim_avg:.4f}")
+        print(f"  PSNR: {psnr_avg:.6f}")
+        print(f"  SSIM: {ssim_avg:.6f}")
 
     save_images(model, val_loader, device,
                 save_path=os.path.join(result_dir, "images", "examples.png"),

@@ -139,6 +139,12 @@ class VQVAETest(nn.Module):
         z = self.encode(x)
         return self.decode(z)
 
+    def get_vq_losses(self):
+        result = {}
+        if hasattr(self, "vq_loss"):
+            result["vq_loss"] = self.vq_loss.item()
+        return result
+
 
 # Required by main.py
 model_class = VQVAETest
