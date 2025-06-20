@@ -4,10 +4,9 @@ Badanie odporności różnych architektur autoenkoderów (AE, U-Net, VQ-VAE) na 
 ## Spis treści
 1. [Opis](#opis)
 2. [Wymagania i instalacja](#wymagania-i-instalacja)
-3. [Struktura katalogów](#struktura-katalogow)
-4. [Instrukcja użytkowania](#instrukcja-uzytkowania)
-5. [Sposób uruchomienia](#Sposob-uruchomienia)
-6. 
+3. [Struktura katalogów](#struktura-katalogów)
+4. [Instrukcja użytkowania](#instrukcja-użytkowania)
+5. [Sposób uruchomienia](#Sposób-uruchomienia)
 
 ## Opis
 
@@ -42,17 +41,21 @@ Wszystkie zależności znajdują się w pliku `requirements.txt`. Główne bibli
    
    #Windows
    source venv\Scripts\activate
+   ```
    
 2. Zainstaluj wymagane biblioteki:
    ```bash
    pip install -r requirements.txt
+   ```
    
 3. Zweryfikuj, że torch widzi GPU:
    ```bash
    python -c "import torch; print(torch.cuda.is_available())"
+   ```
    
 ## Struktura katalogów
 
+```
 .
 ├── configs/                # Pliki konfiguracyjne modeli i treningu (JSON)
 │   ├── adversarial/
@@ -91,6 +94,7 @@ Wszystkie zależności znajdują się w pliku `requirements.txt`. Główne bibli
 ├── device_check.txt       # Skrypt do sprawdzania GPU
 │
 └── main.py                # Główny punkt wejścia – ładuje konfigurację i uruchamia trening lub ewaluację
+```
 
 ## Instrukcja użytkowania:
 
@@ -99,7 +103,8 @@ Wszystkie zależności znajdują się w pliku `requirements.txt`. Główne bibli
 - Argumenty:
    ```bash
    python main.py --mode <tryb> --model <model> --type <wariant> --input <dane> [--log]
-   
+   ```
+  
 ### Opis:
 
 1. --mode 
@@ -141,15 +146,19 @@ dane (źródło danych):
 1. Trening pojedynczego modelu "conv_transpose_ae_512" na czystych danych z logami:
    ```bash
    python main.py --mode train --model conv_transpose_ae_512 --type clean --input subset --log
-   
+   ```
+
 2. Trening całej grupy "residual" na wszystkich typach danych:
    ```bash
    python main.py --mode train --model residual --type all --input subset
+   ```
    
 3. Pełny trening + ewaluacja dla modelu vq_v_ae2_512
    ```bash
    python main.py --mode train_test --model vq_v_ae2_512 --type clean --input full
+   ```
    
 4. Ewaluacja wszystkich modeli z folderu unet na zaszumionych danych:
    ```bash
    python main.py --mode test --model unet --type noisy --input subset
+   ```
