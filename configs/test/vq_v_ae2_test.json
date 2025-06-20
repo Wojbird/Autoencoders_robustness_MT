@@ -2,7 +2,6 @@
   "name": "vq_v_ae2_test",
   "image_size": 224,
   "image_channels": 3,
-  "latent_dim": 64,
   "batch_size": 32,
   "num_workers": 8,
   "epochs": 2,
