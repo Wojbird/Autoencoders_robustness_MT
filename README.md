@@ -6,7 +6,6 @@ Badanie odporności różnych architektur autoenkoderów (AE, U-Net, VQ-VAE) na 
 2. [Wymagania i instalacja](#wymagania-i-instalacja)
 3. [Struktura katalogów](#struktura-katalogów)
 4. [Instrukcja użytkowania](#instrukcja-użytkowania)
-5. [Sposób uruchomienia](#Sposób-uruchomienia)
 
 ## Opis
 
