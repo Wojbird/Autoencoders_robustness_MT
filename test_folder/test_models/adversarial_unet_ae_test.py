@@ -36,6 +36,8 @@ class AdversarialUNetAETest(nn.Module):
         self.enc3 = UNetBlock(24, 32, use_dropout=True)
         self.enc4 = UNetBlock(32, 48, use_dropout=True)
         self.enc5 = UNetBlock(48, 56, use_dropout=True)
+
+        # Bottleneck
         self.bottleneck = UNetBlock(56, latent_dim, use_dropout=True)
 
         # Decoder: 5 levels
@@ -121,7 +123,6 @@ class ImageDiscriminator(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-# Required by main.py
 model_class = AdversarialUNetAETest
 config_path = "configs/test/adversarial_unet_ae_test.json"
 AdversarialUNetAETest.discriminator_class = ImageDiscriminator

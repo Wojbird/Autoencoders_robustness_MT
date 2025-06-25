@@ -150,6 +150,5 @@ class VQVAE512(nn.Module):
         return result
 
 
-# Integracja z main.py
 model_class = VQVAE512
 config_path = "configs/vqv/vq_v_ae_512.json"

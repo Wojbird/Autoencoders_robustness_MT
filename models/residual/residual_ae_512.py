@@ -35,7 +35,7 @@ class ResidualAutoencoderAE512(nn.Module):
             nn.LeakyReLU(0.1, inplace=True)
         )
 
-        # Encoder blocks
+        # Encoder
         self.enc1 = nn.Sequential(
             nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(128),
@@ -71,7 +71,7 @@ class ResidualAutoencoderAE512(nn.Module):
             ResBlock(latent_dim)
         )
 
-        # Decoder blocks with skip connections
+        # Decoder
         self.dec1 = nn.Sequential(
             nn.ConvTranspose2d(latent_dim, 448, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.BatchNorm2d(448),

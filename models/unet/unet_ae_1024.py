@@ -30,15 +30,17 @@ class UNetAE1024(nn.Module):
 
         self.pool = nn.MaxPool2d(2)
 
-        # Encoder: 6 levels
+        # Encoder
         self.enc1 = UNetBlock(image_channels, 64)         # 224x224
         self.enc2 = UNetBlock(64, 128)                     # 112x112
         self.enc3 = UNetBlock(128, 256, use_dropout=True)  # 56x56
         self.enc4 = UNetBlock(256, 384, use_dropout=True)  # 28x28
         self.enc5 = UNetBlock(384, 512, use_dropout=True)  # 14x14
-        self.enc6 = UNetBlock(512, latent_dim, use_dropout=True)  # 7x7
 
-        # Decoder: 6 levels with skip connections
+        # Bottleneck
+        self.bottleneck = UNetBlock(512, latent_dim, use_dropout=True)  # 7x7
+
+        # Decoder
         self.up1 = nn.ConvTranspose2d(latent_dim, 512, kernel_size=2, stride=2)
         self.dec1 = UNetBlock(512 + 512, 512, use_dropout=True)
 
@@ -63,7 +65,7 @@ class UNetAE1024(nn.Module):
         e3 = self.enc3(self.pool(e2))
         e4 = self.enc4(self.pool(e3))
         e5 = self.enc5(self.pool(e4))
-        z = self.enc6(self.pool(e5))
+        z = self.bottleneck(self.pool(e5))
         self._skips = [e1, e2, e3, e4, e5]
         return z
 

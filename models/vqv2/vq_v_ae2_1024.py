@@ -48,6 +48,7 @@ class VQVAE21024(nn.Module):
         self.bottom_codebook_size = config["bottom_num_embeddings"]
         self.commitment_cost = config.get("commitment_cost", 0.25)
 
+        # Pre-encoder
         self.pre_encoder = nn.Sequential(
             nn.Conv2d(C, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
@@ -58,6 +59,7 @@ class VQVAE21024(nn.Module):
             nn.LeakyReLU(0.1, inplace=True),
         )
 
+        # Bottom Encoder
         self.enc_b1 = nn.Sequential(
             nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(128),
@@ -76,6 +78,7 @@ class VQVAE21024(nn.Module):
             nn.Dropout2d(0.2)
         )
 
+        # Top Encoder
         self.enc_t1 = nn.Sequential(
             nn.Conv2d(self.bottom_dim, 512, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(512),
@@ -97,6 +100,7 @@ class VQVAE21024(nn.Module):
             nn.LeakyReLU(0.1, inplace=True),
         )
 
+        # Decoder
         self.dec1 = nn.Sequential(
             nn.ConvTranspose2d(self.bottom_dim * 2, 256, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.BatchNorm2d(256),
@@ -155,6 +159,5 @@ class VQVAE21024(nn.Module):
         return result
 
 
-# Required by main.py
 model_class = VQVAE21024
 config_path = "configs/vqv2/vq_v_ae2_1024.json"

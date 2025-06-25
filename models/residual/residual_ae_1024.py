@@ -71,7 +71,7 @@ class ResidualAutoencoderAE1024(nn.Module):
             ResBlock(latent_dim)
         )
 
-        # Decoder blocks with skip connections
+        # Decoder
         self.dec1 = nn.Sequential(
             nn.ConvTranspose2d(latent_dim, 512, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.BatchNorm2d(512),

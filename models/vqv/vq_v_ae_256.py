@@ -44,8 +44,6 @@ class VQVAE256(nn.Module):
         image_channels = config["image_channels"]
         latent_dim = config["latent_dim"]
         assert latent_dim == 256, "This model is designed for latent_dim=256"
-
-        # Number of embeddings can now be passed via config
         num_embeddings = config.get("num_embeddings", 1024)
 
         self.pre_encoder = nn.Sequential(
@@ -89,17 +87,17 @@ class VQVAE256(nn.Module):
             nn.Dropout2d(0.2)
         )
 
+        # Vector Quantization
         self.quantizer = VectorQuantizer(num_embeddings=num_embeddings, embedding_dim=latent_dim)
 
-        # Decoder (skip connections via concat)
+        # Decoder
         self.dec1 = nn.Sequential(
             nn.ConvTranspose2d(latent_dim, latent_dim, kernel_size=3, stride=2, padding=1, output_padding=1),  # 14x14
             nn.BatchNorm2d(latent_dim),
             nn.LeakyReLU(0.1, inplace=True)
         )
         self.dec2 = nn.Sequential(
-            nn.ConvTranspose2d(latent_dim , 224, kernel_size=3, stride=2, padding=1, output_padding=1),
-            # 28x28
+            nn.ConvTranspose2d(latent_dim , 224, kernel_size=3, stride=2, padding=1, output_padding=1), # 28x28
             nn.BatchNorm2d(224),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
@@ -152,7 +150,5 @@ class VQVAE256(nn.Module):
             result["vq_loss"] = self.vq_loss.item()
         return result
 
-
-# Integration with main.py
 model_class = VQVAE256
 config_path = "configs/vqv/vq_v_ae_256.json"

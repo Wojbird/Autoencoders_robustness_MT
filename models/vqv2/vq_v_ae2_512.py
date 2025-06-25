@@ -48,7 +48,7 @@ class VQVAE2512(nn.Module):
         self.bottom_codebook_size = config["bottom_num_embeddings"]
         self.commitment_cost = config.get("commitment_cost", 0.25)
 
-        # Shared pre-encoder
+        # Pre-encoder
         self.pre_encoder = nn.Sequential(
             nn.Conv2d(C, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
@@ -58,7 +58,7 @@ class VQVAE2512(nn.Module):
             nn.LeakyReLU(0.1, inplace=True),
         )
 
-        # Bottom Encoder (updated)
+        # Bottom Encoder
         self.enc_b1 = nn.Sequential(
             nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # 112
             nn.BatchNorm2d(128),
@@ -75,7 +75,7 @@ class VQVAE2512(nn.Module):
             nn.LeakyReLU(0.1, inplace=True),
         )
 
-        # Top Encoder (unchanged)
+        # Top Encoder
         self.enc_t1 = nn.Sequential(
             nn.Conv2d(self.bottom_dim, 448, kernel_size=3, stride=2, padding=1),  # 14
             nn.BatchNorm2d(448),
@@ -90,13 +90,13 @@ class VQVAE2512(nn.Module):
         self.vq_top = VectorQuantizer(self.top_codebook_size, self.top_dim, self.commitment_cost)
         self.vq_bottom = VectorQuantizer(self.bottom_codebook_size, self.bottom_dim, self.commitment_cost)
 
-        # Decoder
         self.upsample_top = nn.Sequential(
             nn.ConvTranspose2d(self.top_dim, self.bottom_dim, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.BatchNorm2d(self.bottom_dim),
             nn.LeakyReLU(0.1, inplace=True),
         )
 
+        # Decoder
         self.dec1 = nn.Sequential(
             nn.ConvTranspose2d(self.bottom_dim * 2, 256, kernel_size=3, stride=2, padding=1, output_padding=1),  # 56
             nn.BatchNorm2d(256),
@@ -154,6 +154,5 @@ class VQVAE2512(nn.Module):
             result["bottom_vq_loss"] = self.vq_loss_bottom.item()
         return result
 
-# Integracja z main.py
 model_class = VQVAE2512
 config_path = "configs/vqv2/vq_v_ae2_512.json"

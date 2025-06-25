@@ -102,7 +102,5 @@ class ConvTransposeAE512(nn.Module):
         d5 = self.dec5(torch.cat([d4, x1], dim=1))  # 224x224
         return self.activation(self.final(d5))
 
-
-# Required by main.py
 model_class = ConvTransposeAE512
 config_path = "configs/conv/conv_transpose_ae_512.json"

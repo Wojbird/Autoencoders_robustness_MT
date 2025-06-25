@@ -88,6 +88,7 @@ class VQVAE1024(nn.Module):
             nn.Dropout2d(0.2)
         )
 
+        # Vector Quantization
         self.quantizer = VectorQuantizer(num_embeddings=num_embeddings, embedding_dim=latent_dim)
 
         # Decoder
@@ -149,6 +150,5 @@ class VQVAE1024(nn.Module):
         return result
 
 
-# Integracja z main.py
 model_class = VQVAE1024
 config_path = "configs/vqv/vq_v_ae_1024.json"

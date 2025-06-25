@@ -20,6 +20,8 @@ class UNetBlock(nn.Module):
         return self.block(x)
 
 class AdversarialUNetAE512(nn.Module):
+    discriminator_class = None
+
     def __init__(self, config):
         super().__init__()
         image_channels = config["image_channels"]
@@ -28,17 +30,17 @@ class AdversarialUNetAE512(nn.Module):
 
         self.pool = nn.MaxPool2d(2)
 
-        # Encoder blocks
+        # Encoder
         self.enc1 = UNetBlock(image_channels, 64)
         self.enc2 = UNetBlock(64, 128)
         self.enc3 = UNetBlock(128, 256, use_dropout=True)
-        self.enc4 = UNetBlock(256, 384, use_dropout=True)
-        self.enc5 = UNetBlock(384, 448, use_dropout=True)
+        self.enc4 = UNetBlock(256, 384, use_dropout=True) # 14x14
+        self.enc5 = UNetBlock(384, 448, use_dropout=True) # 14x14
 
         # Bottleneck
-        self.bottleneck = UNetBlock(448, latent_dim, use_dropout=True)
+        self.bottleneck = UNetBlock(448, latent_dim, use_dropout=True) # 7x7
 
-        # Decoder blocks
+        # Decoder
         self.up1 = nn.ConvTranspose2d(latent_dim, 448, kernel_size=2, stride=2)
         self.dec1 = UNetBlock(448 + 448, 448, use_dropout=True)
 

@@ -30,7 +30,7 @@ class UNetAE512(nn.Module):
 
         self.pool = nn.MaxPool2d(2)
 
-        # Encoder: 5 levels
+        # Encoder
         self.enc1 = UNetBlock(image_channels, 64)        # no dropout in shallowest
         self.enc2 = UNetBlock(64, 128)
         self.enc3 = UNetBlock(128, 256, use_dropout=True)
@@ -40,7 +40,7 @@ class UNetAE512(nn.Module):
         # Bottleneck
         self.bottleneck = UNetBlock(448, latent_dim, use_dropout=True)
 
-        # Decoder: 5 levels with skip connections
+        # Decoder
         self.up1 = nn.ConvTranspose2d(latent_dim, 448, kernel_size=2, stride=2)
         self.dec1 = UNetBlock(448 + 448, 448, use_dropout=True)
 
@@ -60,31 +60,31 @@ class UNetAE512(nn.Module):
         self.activation = nn.Sigmoid()
 
     def encode(self, x):
-        e1 = self.enc1(x)                # H x W
-        e2 = self.enc2(self.pool(e1))   # H/2 x W/2
-        e3 = self.enc3(self.pool(e2))   # H/4 x W/4
-        e4 = self.enc4(self.pool(e3))   # H/8 x W/8
-        e5 = self.enc5(self.pool(e4))   # H/16 x W/16
-        z = self.bottleneck(self.pool(e5))  # H/32 x W/32
+        e1 = self.enc1(x)
+        e2 = self.enc2(self.pool(e1))
+        e3 = self.enc3(self.pool(e2))
+        e4 = self.enc4(self.pool(e3))
+        e5 = self.enc5(self.pool(e4))
+        z = self.bottleneck(self.pool(e5))
         self._skips = [e1, e2, e3, e4, e5]
         return z
 
     def decode(self, z):
         e1, e2, e3, e4, e5 = self._skips
 
-        d1 = self.up1(z)                        # H/16 x W/16
+        d1 = self.up1(z)
         d1 = self.dec1(torch.cat([d1, e5], dim=1))
 
-        d2 = self.up2(d1)                       # H/8 x W/8
+        d2 = self.up2(d1)
         d2 = self.dec2(torch.cat([d2, e4], dim=1))
 
-        d3 = self.up3(d2)                       # H/4 x W/4
+        d3 = self.up3(d2)
         d3 = self.dec3(torch.cat([d3, e3], dim=1))
 
-        d4 = self.up4(d3)                       # H/2 x W/2
+        d4 = self.up4(d3)
         d4 = self.dec4(torch.cat([d4, e2], dim=1))
 
-        d5 = self.up5(d4)                       # H x W
+        d5 = self.up5(d4)
         d5 = self.dec5(torch.cat([d5, e1], dim=1))
 
         out = self.activation(self.final(d5))
@@ -94,7 +94,5 @@ class UNetAE512(nn.Module):
         z = self.encode(x)
         return self.decode(z)
 
-
-# Required by main.py
 model_class = UNetAE512
 config_path = "configs/unet_ae_512.json"

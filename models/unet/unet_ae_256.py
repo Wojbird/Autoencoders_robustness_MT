@@ -28,17 +28,17 @@ class UNetAE256(nn.Module):
 
         self.pool = nn.MaxPool2d(2)
 
-        # Encoder blocks (5 levels)
-        self.enc1 = UNetBlock(image_channels, 32)          # no dropout in shallow block
+        # Encoder
+        self.enc1 = UNetBlock(image_channels, 32)
         self.enc2 = UNetBlock(32, 64)
         self.enc3 = UNetBlock(64, 96, use_dropout=True)
         self.enc4 = UNetBlock(96, 128, use_dropout=True)
         self.enc5 = UNetBlock(128, 192, use_dropout=True)
 
-        # Bottleneck (latent representation)
+        # Bottleneck
         self.bottleneck = UNetBlock(192, latent_dim, use_dropout=True)
 
-        # Decoder blocks (5 levels, skip connections)
+        # Decoder
         self.up1 = nn.ConvTranspose2d(latent_dim, 192, kernel_size=2, stride=2)
         self.dec1 = UNetBlock(192 + 192, 192, use_dropout=True)
 
@@ -54,7 +54,6 @@ class UNetAE256(nn.Module):
         self.up5 = nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2)
         self.dec5 = UNetBlock(32 + 32, 32)
 
-        # Final conv + activation
         self.final = nn.Conv2d(32, image_channels, kernel_size=1)
         self.activation = nn.Sigmoid()
 
@@ -93,7 +92,5 @@ class UNetAE256(nn.Module):
         z = self.encode(x)
         return self.decode(z)
 
-
-# Required by main.py
 model_class = UNetAE256
 config_path = "configs/unet_ae_256.json"
