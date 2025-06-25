@@ -31,32 +31,32 @@ class AdversarialUNetAE256(nn.Module):
         self.pool = nn.MaxPool2d(2)
 
         # Encoder
-        self.enc1 = UNetBlock(image_channels, 32)
-        self.enc2 = UNetBlock(32, 64)
-        self.enc3 = UNetBlock(64, 96, use_dropout=True)
-        self.enc4 = UNetBlock(96, 128, use_dropout=True)
-        self.enc5 = UNetBlock(128, 192, use_dropout=True) # 7x7
+        self.enc1 = UNetBlock(image_channels, 32)   # 32×224×224
+        self.enc2 = UNetBlock(32, 64)   # 64×112×112
+        self.enc3 = UNetBlock(64, 96, use_dropout=True) # 96×56×56
+        self.enc4 = UNetBlock(96, 128, use_dropout=True)    # 128×28×28
+        self.enc5 = UNetBlock(128, 192, use_dropout=True)   # 192×14×14
 
         # Bottleneck
-        self.bottleneck = UNetBlock(192, latent_dim, use_dropout=True)
+        self.bottleneck = UNetBlock(192, latent_dim, use_dropout=True)  # 256×7×7
 
         # Decoder
         self.up1 = nn.ConvTranspose2d(latent_dim, 192, kernel_size=2, stride=2)
-        self.dec1 = UNetBlock(192 + 192, 192, use_dropout=True)
+        self.dec1 = UNetBlock(192 + 192, 192, use_dropout=True) # 192×14×14
 
         self.up2 = nn.ConvTranspose2d(192, 128, kernel_size=2, stride=2)
-        self.dec2 = UNetBlock(128 + 128, 128, use_dropout=True)
+        self.dec2 = UNetBlock(128 + 128, 128, use_dropout=True) # 128×28×28
 
         self.up3 = nn.ConvTranspose2d(128, 96, kernel_size=2, stride=2)
-        self.dec3 = UNetBlock(96 + 96, 96, use_dropout=True)
+        self.dec3 = UNetBlock(96 + 96, 96, use_dropout=True)    # 96×56×56
 
         self.up4 = nn.ConvTranspose2d(96, 64, kernel_size=2, stride=2)
-        self.dec4 = UNetBlock(64 + 64, 64)
+        self.dec4 = UNetBlock(64 + 64, 64)  # 64×112×112
 
         self.up5 = nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2)
-        self.dec5 = UNetBlock(32 + 32, 32)
+        self.dec5 = UNetBlock(32 + 32, 32)  # 32×224×224
 
-        self.final = nn.Conv2d(32, image_channels, kernel_size=1)
+        self.final = nn.Conv2d(32, image_channels, kernel_size=1)   # 3×224×224
         self.activation = nn.Sigmoid()
 
     def encode(self, x):
@@ -98,19 +98,19 @@ class ImageDiscriminator(nn.Module):
     def __init__(self, image_channels=3):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Conv2d(image_channels, 64, kernel_size=3, stride=2, padding=1),  # 112x112
+            nn.Conv2d(image_channels, 64, kernel_size=3, stride=2, padding=1),  # 64×112×112
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # 56x56
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # 128×56×56
             nn.BatchNorm2d(128),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # 28x28
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # 256×28×28
             nn.BatchNorm2d(256),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1),  # 14x14
+            nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1),  # 512×14×14
             nn.BatchNorm2d(512),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.AdaptiveAvgPool2d(1),  # [B, 512, 1, 1]
-            nn.Flatten(),             # [B, 512]
+            nn.AdaptiveAvgPool2d(1), # 512 × 1 × 1
+            nn.Flatten(),
             nn.Linear(512, 1),
             nn.Sigmoid()
         )
