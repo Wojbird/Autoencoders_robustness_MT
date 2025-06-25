@@ -12,7 +12,7 @@
   "early_stopping_patience": 10,
   "num_embeddings": 4096,
   "top_latent_dim": 1024,
-  "bottom_latent_dim": 512,
+  "bottom_latent_dim": 384,
   "top_num_embeddings": 2048,
   "bottom_num_embeddings": 2048,
   "commitment_cost": 0.25
