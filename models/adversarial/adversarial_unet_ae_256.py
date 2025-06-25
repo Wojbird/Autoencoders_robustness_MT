@@ -30,7 +30,7 @@ class AdversarialUNetAE256(nn.Module):
 
         self.pool = nn.MaxPool2d(2)
 
-        # Encoder blocks (5 levels)
+        # Encoder blocks
         self.enc1 = UNetBlock(image_channels, 32)
         self.enc2 = UNetBlock(32, 64)
         self.enc3 = UNetBlock(64, 96, use_dropout=True)
@@ -40,7 +40,7 @@ class AdversarialUNetAE256(nn.Module):
         # Bottleneck
         self.bottleneck = UNetBlock(192, latent_dim, use_dropout=True)
 
-        # Decoder blocks (with skip connections)
+        # Decoder blocks
         self.up1 = nn.ConvTranspose2d(latent_dim, 192, kernel_size=2, stride=2)
         self.dec1 = UNetBlock(192 + 192, 192, use_dropout=True)
 
@@ -94,7 +94,6 @@ class AdversarialUNetAE256(nn.Module):
         x_hat = self.decode(z)
         return x_hat, z
 
-
 class ImageDiscriminator(nn.Module):
     def __init__(self, image_channels=3):
         super().__init__()
@@ -119,8 +118,6 @@ class ImageDiscriminator(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-
-# Required by main.py
 model_class = AdversarialUNetAE256
 config_path = "configs/adversarial_unet_ae_256.json"
 AdversarialUNetAE256.discriminator_class = ImageDiscriminator
