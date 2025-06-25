@@ -58,24 +58,24 @@ class VQVAE256(nn.Module):
 
         # Encoder
         self.enc1 = nn.Sequential(
-            nn.Conv2d(64, 96, kernel_size=3, stride=2, padding=1),  # 128x112x112
+            nn.Conv2d(64, 96, kernel_size=3, stride=2, padding=1),  # 96x112x112
             nn.BatchNorm2d(96),
             nn.LeakyReLU(0.1, inplace=True)
         )
         self.enc2 = nn.Sequential(
-            nn.Conv2d(96, 128, kernel_size=3, stride=2, padding=1),  # 192x56x56
+            nn.Conv2d(96, 128, kernel_size=3, stride=2, padding=1),  # 128x56x56
             nn.BatchNorm2d(128),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
         )
         self.enc3 = nn.Sequential(
-            nn.Conv2d(128, 192, kernel_size=3, stride=2, padding=1),  # 224x28x28
+            nn.Conv2d(128, 192, kernel_size=3, stride=2, padding=1),  # 192x28x28
             nn.BatchNorm2d(192),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
         )
         self.enc4 = nn.Sequential(
-            nn.Conv2d(192, 224, kernel_size=3, stride=2, padding=1),  # 256x14x14
+            nn.Conv2d(192, 224, kernel_size=3, stride=2, padding=1),  # 224x14x14
             nn.BatchNorm2d(224),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
