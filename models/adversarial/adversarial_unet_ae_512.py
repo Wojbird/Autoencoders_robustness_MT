@@ -31,32 +31,32 @@ class AdversarialUNetAE512(nn.Module):
         self.pool = nn.MaxPool2d(2)
 
         # Encoder
-        self.enc1 = UNetBlock(image_channels, 64)   #64×224×224
-        self.enc2 = UNetBlock(64, 128)  #128×112×112
-        self.enc3 = UNetBlock(128, 256, use_dropout=True)   #256×56×56
-        self.enc4 = UNetBlock(256, 384, use_dropout=True)   #384×28×28
-        self.enc5 = UNetBlock(384, 448, use_dropout=True)   #448×14×14
+        self.enc1 = UNetBlock(image_channels, 64)   # 64×224×224
+        self.enc2 = UNetBlock(64, 128)  # 128×112×112
+        self.enc3 = UNetBlock(128, 256, use_dropout=True)   # 256×56×56
+        self.enc4 = UNetBlock(256, 384, use_dropout=True)   # 384×28×28
+        self.enc5 = UNetBlock(384, 448, use_dropout=True)   # 448×14×14
 
         # Bottleneck
-        self.bottleneck = UNetBlock(448, latent_dim, use_dropout=True)  #512×7×7
+        self.bottleneck = UNetBlock(448, latent_dim, use_dropout=True)  # 512×7×7
 
         # Decoder
         self.up1 = nn.ConvTranspose2d(latent_dim, 448, kernel_size=2, stride=2)
-        self.dec1 = UNetBlock(448 + 448, 448, use_dropout=True) #448×14×14
+        self.dec1 = UNetBlock(448 + 448, 448, use_dropout=True) # 448×14×14
 
         self.up2 = nn.ConvTranspose2d(448, 384, kernel_size=2, stride=2)
-        self.dec2 = UNetBlock(384 + 384, 384, use_dropout=True) #384×28×28
+        self.dec2 = UNetBlock(384 + 384, 384, use_dropout=True) # 384×28×28
 
         self.up3 = nn.ConvTranspose2d(384, 256, kernel_size=2, stride=2)
-        self.dec3 = UNetBlock(256 + 256, 256, use_dropout=True) #256×56×56
+        self.dec3 = UNetBlock(256 + 256, 256, use_dropout=True) # 256×56×56
 
         self.up4 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
-        self.dec4 = UNetBlock(128 + 128, 128)   #128×112×112
+        self.dec4 = UNetBlock(128 + 128, 128)   # 128×112×112
 
         self.up5 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
-        self.dec5 = UNetBlock(64 + 64, 64)  #64×224×224
+        self.dec5 = UNetBlock(64 + 64, 64)  # 64×224×224
 
-        self.final = nn.Conv2d(64, image_channels, kernel_size=1)   #3×224×224
+        self.final = nn.Conv2d(64, image_channels, kernel_size=1)   # 3×224×224
         self.activation = nn.Sigmoid()
 
     def encode(self, x):

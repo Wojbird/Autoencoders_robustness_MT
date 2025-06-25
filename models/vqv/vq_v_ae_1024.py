@@ -48,41 +48,41 @@ class VQVAE1024(nn.Module):
         num_embeddings = config.get("num_embeddings", 4096)
 
         self.pre_encoder = nn.Sequential(
-            nn.Conv2d(image_channels, 32, kernel_size=3, padding=1),
+            nn.Conv2d(image_channels, 32, kernel_size=3, padding=1),    # 32x224x224
             nn.BatchNorm2d(32),
             nn.LeakyReLU(0.1, inplace=True),
 
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),    # 64x224x224
             nn.BatchNorm2d(64),
             nn.LeakyReLU(0.1, inplace=True),
         )
 
         # Encoder
         self.enc1 = nn.Sequential(
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # 112x112
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # 128x112x112
             nn.BatchNorm2d(128),
             nn.LeakyReLU(0.1, inplace=True)
         )
         self.enc2 = nn.Sequential(
-            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # 56x56
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # 256x56x56
             nn.BatchNorm2d(256),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
         )
         self.enc3 = nn.Sequential(
-            nn.Conv2d(256, 384, kernel_size=3, stride=2, padding=1),  # 28x28
+            nn.Conv2d(256, 384, kernel_size=3, stride=2, padding=1),  # 384x28x28
             nn.BatchNorm2d(384),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
         )
         self.enc4 = nn.Sequential(
-            nn.Conv2d(384, 512, kernel_size=3, stride=2, padding=1),  # 14x14
+            nn.Conv2d(384, 512, kernel_size=3, stride=2, padding=1),  # 512x14x14
             nn.BatchNorm2d(512),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
         )
         self.enc5 = nn.Sequential(
-            nn.Conv2d(512, latent_dim, kernel_size=3, stride=2, padding=1),  # 7x7
+            nn.Conv2d(512, latent_dim, kernel_size=3, stride=2, padding=1),  # 1024x7x7
             nn.BatchNorm2d(latent_dim),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
@@ -93,32 +93,32 @@ class VQVAE1024(nn.Module):
 
         # Decoder
         self.dec1 = nn.Sequential(
-            nn.ConvTranspose2d(latent_dim, 512, kernel_size=3, stride=2, padding=1, output_padding=1),  # 14x14
+            nn.ConvTranspose2d(latent_dim, 512, kernel_size=3, stride=2, padding=1, output_padding=1),  # 512x14x14
             nn.BatchNorm2d(512),
             nn.LeakyReLU(0.1, inplace=True)
         )
         self.dec2 = nn.Sequential(
-            nn.ConvTranspose2d(512 , 384, kernel_size=3, stride=2, padding=1, output_padding=1),  # 28x28
+            nn.ConvTranspose2d(512 , 384, kernel_size=3, stride=2, padding=1, output_padding=1),  # 384x28x28
             nn.BatchNorm2d(384),
             nn.LeakyReLU(0.1, inplace=True)
         )
         self.dec3 = nn.Sequential(
-            nn.ConvTranspose2d(384 , 256, kernel_size=3, stride=2, padding=1, output_padding=1),  # 56x56
+            nn.ConvTranspose2d(384 , 256, kernel_size=3, stride=2, padding=1, output_padding=1),  # 256x56x56
             nn.BatchNorm2d(256),
             nn.LeakyReLU(0.1, inplace=True)
         )
         self.dec4 = nn.Sequential(
-            nn.ConvTranspose2d(256 , 128, kernel_size=3, stride=2, padding=1, output_padding=1),  # 112x112
+            nn.ConvTranspose2d(256 , 128, kernel_size=3, stride=2, padding=1, output_padding=1),  # 128x112x112
             nn.BatchNorm2d(128),
             nn.LeakyReLU(0.1, inplace=True)
         )
         self.dec5 = nn.Sequential(
-            nn.ConvTranspose2d(128 , 64, kernel_size=3, stride=2, padding=1, output_padding=1),  # 224x224
+            nn.ConvTranspose2d(128 , 64, kernel_size=3, stride=2, padding=1, output_padding=1),  # 64x224x224
             nn.BatchNorm2d(64),
             nn.LeakyReLU(0.1, inplace=True)
         )
 
-        self.final = nn.Conv2d(64, image_channels, kernel_size=3, padding=1)
+        self.final = nn.Conv2d(64, image_channels, kernel_size=3, padding=1)    # 3x224x224
         self.activation = nn.Sigmoid()
 
     def encode(self, x):
@@ -148,7 +148,6 @@ class VQVAE1024(nn.Module):
         if hasattr(self, "vq_loss"):
             result["vq_loss"] = self.vq_loss.item()
         return result
-
 
 model_class = VQVAE1024
 config_path = "configs/vqv/vq_v_ae_1024.json"

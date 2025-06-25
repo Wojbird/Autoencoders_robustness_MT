@@ -60,18 +60,18 @@ class VQVAE2256(nn.Module):
 
         # Bottom Encoder
         self.enc_b1 = nn.Sequential(
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(128),
+            nn.Conv2d(64, 96, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(96),
             nn.LeakyReLU(0.1, inplace=True)
         )
         self.enc_b2 = nn.Sequential(
-            nn.Conv2d(128, 192, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(192),
+            nn.Conv2d(96, 128, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(128),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
         )
         self.enc_b3 = nn.Sequential(
-            nn.Conv2d(192, self.bottom_dim, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(128, self.bottom_dim, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(self.bottom_dim),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
@@ -100,18 +100,18 @@ class VQVAE2256(nn.Module):
 
         # Decoder
         self.dec1 = nn.Sequential(
-            nn.ConvTranspose2d(self.bottom_dim * 2, 192, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.BatchNorm2d(192),
+            nn.ConvTranspose2d(self.bottom_dim * 2, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.BatchNorm2d(128),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
         )
         self.dec2 = nn.Sequential(
-            nn.ConvTranspose2d(192, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.BatchNorm2d(128),
+            nn.ConvTranspose2d(128, 96, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.BatchNorm2d(96),
             nn.LeakyReLU(0.1, inplace=True)
         )
         self.dec3 = nn.Sequential(
-            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.ConvTranspose2d(96, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.BatchNorm2d(64),
             nn.LeakyReLU(0.1, inplace=True)
         )
