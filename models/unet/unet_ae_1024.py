@@ -95,4 +95,4 @@ class UNetAE1024(nn.Module):
         return self.decode(z)
 
 model_class = UNetAE1024
-config_path = "configs/unet_ae_1024.json"
+config_path = "configs/unet/unet_ae_1024.json"

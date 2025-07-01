@@ -120,5 +120,5 @@ class ImageDiscriminator(nn.Module):
         return self.net(x)
 
 model_class = AdversarialUNetAE1024
-config_path = "configs/adversarial_unet_ae_1024.json"
+config_path = "configs/adversarial/adversarial_unet_ae_1024.json"
 AdversarialUNetAE1024.discriminator_class = ImageDiscriminator

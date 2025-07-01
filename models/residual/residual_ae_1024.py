@@ -133,4 +133,4 @@ class ResidualAutoencoderAE1024(nn.Module):
         return self.activation(self.final(d5))
 
 model_class = ResidualAutoencoderAE1024
-config_path = "configs/residual_ae_1024.json"
+config_path = "configs/residual/residual_ae_1024.json"
