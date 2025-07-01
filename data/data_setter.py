@@ -2,9 +2,8 @@ import os
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from torch.utils.data import random_split
-from utils.path_loader import load_imagenet_root
 
-full_root = load_imagenet_root()
+full_root = "/raid/kszyc/datasets/ImageNet2012"
 
 
 def get_transforms(image_size):
