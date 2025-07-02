@@ -5,6 +5,7 @@ from torch.utils.data import random_split
 
 full_root = "/raid/kszyc/datasets/ImageNet2012"
 
+root_dir = "datasets/subset_imagenet/"
 
 def get_transforms(image_size):
 
@@ -14,7 +15,7 @@ def get_transforms(image_size):
     ])
 
 
-def get_subnet_datasets(root_dir="datasets/subset_imagenet/", image_size=224, val_split=0.1):
+def get_subnet_datasets(image_size=224, val_split=0.1):
 
     transform = get_transforms(image_size)
     dataset = ImageFolder(root_dir, transform=transform)
@@ -26,11 +27,11 @@ def get_subnet_datasets(root_dir="datasets/subset_imagenet/", image_size=224, va
     return train_set, val_set
 
 
-def get_imagenet_datasets(root_dir=full_root, image_size=224):
+def get_imagenet_datasets(image_size=224):
 
     transform = get_transforms(image_size)
 
-    train_set = ImageFolder(os.path.join(root_dir, "train"), transform=transform)
-    val_set = ImageFolder(os.path.join(root_dir, "val"), transform=transform)
+    train_set = ImageFolder(os.path.join(full_root, "train"), transform=transform)
+    val_set = ImageFolder(os.path.join(full_root, "val"), transform=transform)
 
     return train_set, val_set

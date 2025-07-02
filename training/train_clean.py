@@ -41,9 +41,9 @@ def train_model(model_class, config_path, input_variant="clean", dataset_variant
     device = get_device() # GPU
 
     if dataset_variant == "subset":
-        train_set, val_set = get_subnet_datasets("datasets/subset_imagenet/", image_size=config["image_size"]) # Subnet of ImageNet
+        train_set, val_set = get_subnet_datasets(image_size=config["image_size"]) # Subnet of ImageNet
     else:
-        train_set, val_set = get_imagenet_datasets("datasets/full_imagenet/", image_size=config["image_size"]) # ImageNet
+        train_set, val_set = get_imagenet_datasets(image_size=config["image_size"]) # ImageNet
 
     batch_size = config["batch_size"]
     num_workers = config["num_workers"]
