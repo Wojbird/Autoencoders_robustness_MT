@@ -34,9 +34,9 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
     device = get_device()
 
     if dataset_variant == "subset":
-        _, val_set = get_subnet_datasets("datasets/subset_imagenet/", image_size=config["image_size"]) # Subnet of ImageNet
+        _, val_set = get_subnet_datasets(image_size=config["image_size"]) # Subnet of ImageNet
     else:
-        _, val_set = get_imagenet_datasets("datasets/full_imagenet/", image_size=config["image_size"]) # ImageNet
+        _, val_set = get_imagenet_datasets(image_size=config["image_size"]) # ImageNet
 
     batch_size = config["batch_size"]
     num_workers = config["num_workers"]
