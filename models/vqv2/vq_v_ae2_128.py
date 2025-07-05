@@ -60,18 +60,18 @@ class VQVAE2128(nn.Module):
 
         # Bottom Encoder
         self.enc_b1 = nn.Sequential(
-            nn.Conv2d(64, 80, kernel_size=3, stride=2, padding=1),  # 96x112x112
+            nn.Conv2d(64, 80, kernel_size=3, stride=2, padding=1),  # 80x112x112
             nn.BatchNorm2d(80),
             nn.LeakyReLU(0.1, inplace=True)
         )
         self.enc_b2 = nn.Sequential(
-            nn.Conv2d(80, 96, kernel_size=3, stride=2, padding=1), # 128x56x56
+            nn.Conv2d(80, 96, kernel_size=3, stride=2, padding=1), # 96x56x56
             nn.BatchNorm2d(96),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
         )
         self.enc_b3 = nn.Sequential(
-            nn.Conv2d(96, self.bottom_dim, kernel_size=3, stride=2, padding=1),    # 192x28x28
+            nn.Conv2d(96, self.bottom_dim, kernel_size=3, stride=2, padding=1),    # 112x28x28
             nn.BatchNorm2d(self.bottom_dim),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
@@ -79,12 +79,12 @@ class VQVAE2128(nn.Module):
 
         # Top Encoder
         self.enc_t1 = nn.Sequential(
-            nn.Conv2d(self.bottom_dim, 120, kernel_size=3, stride=2, padding=1),    # 224x14x14
+            nn.Conv2d(self.bottom_dim, 120, kernel_size=3, stride=2, padding=1),    # 120x14x14
             nn.BatchNorm2d(120),
             nn.LeakyReLU(0.1, inplace=True)
         )
         self.enc_t2 = nn.Sequential(
-            nn.Conv2d(120, self.top_dim, kernel_size=3, padding=1), # 256x7x7
+            nn.Conv2d(120, self.top_dim, kernel_size=3, padding=1), # 128x7x7
             nn.BatchNorm2d(self.top_dim),
             nn.LeakyReLU(0.1, inplace=True)
         )
@@ -100,7 +100,7 @@ class VQVAE2128(nn.Module):
 
         # Decoder
         self.dec1 = nn.Sequential(
-            nn.ConvTranspose2d(self.bottom_dim * 2, 112, kernel_size=3, stride=2, padding=1, output_padding=1), # 128x56x56
+            nn.ConvTranspose2d(self.bottom_dim * 2, 112, kernel_size=3, stride=2, padding=1, output_padding=1), # 112x56x56
             nn.BatchNorm2d(112),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)

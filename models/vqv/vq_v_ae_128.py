@@ -44,7 +44,7 @@ class VQVAE128(nn.Module):
         image_channels = config["image_channels"]
         latent_dim = config["latent_dim"]
         assert latent_dim == 128, "This model is designed for latent_dim=128"
-        num_embeddings = config.get("num_embeddings", 1024)
+        num_embeddings = config.get("num_embeddings", 512)
 
         self.pre_encoder = nn.Sequential(
             nn.Conv2d(image_channels, 32, kernel_size=3, padding=1),    # 32x224x224
@@ -58,30 +58,30 @@ class VQVAE128(nn.Module):
 
         # Encoder
         self.enc1 = nn.Sequential(
-            nn.Conv2d(64, 80, kernel_size=3, stride=2, padding=1),  # 96x112x112
+            nn.Conv2d(64, 80, kernel_size=3, stride=2, padding=1),  # 80x112x112
             nn.BatchNorm2d(80),
             nn.LeakyReLU(0.1, inplace=True)
         )
         self.enc2 = nn.Sequential(
-            nn.Conv2d(80, 96, kernel_size=3, stride=2, padding=1),  # 128x56x56
+            nn.Conv2d(80, 96, kernel_size=3, stride=2, padding=1),  # 96x56x56
             nn.BatchNorm2d(96),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
         )
         self.enc3 = nn.Sequential(
-            nn.Conv2d(96, 112, kernel_size=3, stride=2, padding=1),  # 192x28x28
+            nn.Conv2d(96, 112, kernel_size=3, stride=2, padding=1),  # 112x28x28
             nn.BatchNorm2d(112),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
         )
         self.enc4 = nn.Sequential(
-            nn.Conv2d(112, 120, kernel_size=3, stride=2, padding=1),  # 224x14x14
+            nn.Conv2d(112, 120, kernel_size=3, stride=2, padding=1),  # 120x14x14
             nn.BatchNorm2d(120),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
         )
         self.enc5 = nn.Sequential(
-            nn.Conv2d(120, latent_dim, kernel_size=3, stride=2, padding=1),  # 256x7x7
+            nn.Conv2d(120, latent_dim, kernel_size=3, stride=2, padding=1),  # 128x7x7
             nn.BatchNorm2d(latent_dim),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
@@ -92,18 +92,18 @@ class VQVAE128(nn.Module):
 
         # Decoder
         self.dec1 = nn.Sequential(
-            nn.ConvTranspose2d(latent_dim, 120, kernel_size=3, stride=2, padding=1, output_padding=1),  # 224x14x14
+            nn.ConvTranspose2d(latent_dim, 120, kernel_size=3, stride=2, padding=1, output_padding=1),  # 120x14x14
             nn.BatchNorm2d(120),
             nn.LeakyReLU(0.1, inplace=True)
         )
         self.dec2 = nn.Sequential(
-            nn.ConvTranspose2d(120 , 112, kernel_size=3, stride=2, padding=1, output_padding=1), # 120x28x28
+            nn.ConvTranspose2d(120 , 112, kernel_size=3, stride=2, padding=1, output_padding=1), # 112x28x28
             nn.BatchNorm2d(112),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
         )
         self.dec3 = nn.Sequential(
-            nn.ConvTranspose2d(112 , 96, kernel_size=3, stride=2, padding=1, output_padding=1),  # 112x56x56
+            nn.ConvTranspose2d(112 , 96, kernel_size=3, stride=2, padding=1, output_padding=1),  # 96x56x56
             nn.BatchNorm2d(96),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)

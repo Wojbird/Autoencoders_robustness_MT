@@ -32,26 +32,26 @@ class AdversarialUNetAE128(nn.Module):
 
         # Encoder
         self.enc1 = UNetBlock(image_channels, 32)   # 32×224×224
-        self.enc2 = UNetBlock(32, 48)   # 64×112×112
-        self.enc3 = UNetBlock(48, 64, use_dropout=True) # 96×56×56
-        self.enc4 = UNetBlock(64, 96, use_dropout=True)    # 128×28×28
-        self.enc5 = UNetBlock(96, 112, use_dropout=True)   # 192×14×14
+        self.enc2 = UNetBlock(32, 48)   # 48×112×112
+        self.enc3 = UNetBlock(48, 64, use_dropout=True) # 64×56×56
+        self.enc4 = UNetBlock(64, 96, use_dropout=True)    # 96×28×28
+        self.enc5 = UNetBlock(96, 112, use_dropout=True)   # 112×14×14
 
         # Bottleneck
-        self.bottleneck = UNetBlock(112, latent_dim, use_dropout=True)  # 256×7×7
+        self.bottleneck = UNetBlock(112, latent_dim, use_dropout=True)  # 128×7×7
 
         # Decoder
         self.up1 = nn.ConvTranspose2d(latent_dim, 112 , kernel_size=2, stride=2)
-        self.dec1 = UNetBlock(112  + 112 , 112, use_dropout=True) # 192×14×14
+        self.dec1 = UNetBlock(112  + 112 , 112, use_dropout=True) # 112×14×14
 
         self.up2 = nn.ConvTranspose2d(112, 96, kernel_size=2, stride=2)
-        self.dec2 = UNetBlock(96 + 96, 96, use_dropout=True) # 128×28×28
+        self.dec2 = UNetBlock(96 + 96, 96, use_dropout=True) # 96×28×28
 
         self.up3 = nn.ConvTranspose2d(96, 64, kernel_size=2, stride=2)
-        self.dec3 = UNetBlock(64 + 64, 64, use_dropout=True)    # 96×56×56
+        self.dec3 = UNetBlock(64 + 64, 64, use_dropout=True)    # 64×56×56
 
         self.up4 = nn.ConvTranspose2d(64, 48, kernel_size=2, stride=2)
-        self.dec4 = UNetBlock(48 + 48, 48)  # 64×112×112
+        self.dec4 = UNetBlock(48 + 48, 48)  # 48×112×112
 
         self.up5 = nn.ConvTranspose2d(48, 32, kernel_size=2, stride=2)
         self.dec5 = UNetBlock(32 + 32, 32)  # 32×224×224
