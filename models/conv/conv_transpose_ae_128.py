@@ -1,14 +1,14 @@
 import torch
 import torch.nn as nn
 
-class ConvTransposeAE512(nn.Module):
+class ConvTransposeAE128(nn.Module):
     def __init__(self, config):
         super().__init__()
         image_channels = config["image_channels"]
         latent_dim = config["latent_dim"]
-        assert latent_dim == 512, "This model is designed for latent_dim=512"
+        assert latent_dim == 128, "This model is designed for latent_dim=128"
 
-        # Pre-encoder: 3 → 32 → 64
+        # Pre-encoder
         self.pre_encoder = nn.Sequential(
             nn.Conv2d(image_channels, 32, kernel_size=3, padding=1),    # 32x224x224
             nn.BatchNorm2d(32),
@@ -20,30 +20,30 @@ class ConvTransposeAE512(nn.Module):
 
         # Encoder
         self.enc1 = nn.Sequential(
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # 128x112x112
-            nn.BatchNorm2d(128),
+            nn.Conv2d(64, 80, kernel_size=3, stride=2, padding=1),  # 80x112x112
+            nn.BatchNorm2d(80),
             nn.LeakyReLU(0.1, inplace=True)
         )
         self.enc2 = nn.Sequential(
-            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # 256x56x56
-            nn.BatchNorm2d(256),
+            nn.Conv2d(80, 96, kernel_size=3, stride=2, padding=1),  # 96x56x56
+            nn.BatchNorm2d(96),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
         )
         self.enc3 = nn.Sequential(
-            nn.Conv2d(256, 384, kernel_size=3, stride=2, padding=1),  # 384x28x28
-            nn.BatchNorm2d(384),
+            nn.Conv2d(96, 112, kernel_size=3, stride=2, padding=1),  # 112x28x28
+            nn.BatchNorm2d(112),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
         )
         self.enc4 = nn.Sequential(
-            nn.Conv2d(384, 448, kernel_size=3, stride=2, padding=1),  # 448x14x14
-            nn.BatchNorm2d(448),
+            nn.Conv2d(112, 120, kernel_size=3, stride=2, padding=1),  # 120x14x14
+            nn.BatchNorm2d(120),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
         )
         self.enc5 = nn.Sequential(
-            nn.Conv2d(448, latent_dim, kernel_size=3, stride=2, padding=1),  # 512x7x7
+            nn.Conv2d(120, latent_dim, kernel_size=3, stride=2, padding=1),  # 128x7x7
             nn.BatchNorm2d(latent_dim),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
@@ -51,27 +51,29 @@ class ConvTransposeAE512(nn.Module):
 
         # Decoder
         self.dec1 = nn.Sequential(
-            nn.ConvTranspose2d(latent_dim, 448, kernel_size=3, stride=2, padding=1, output_padding=1),  # 448x14x14
-            nn.BatchNorm2d(448),
-            nn.LeakyReLU(0.1, inplace=True),
-        )
-        self.dec2 = nn.Sequential(
-            nn.ConvTranspose2d(448 + 448, 384, kernel_size=3, stride=2, padding=1, output_padding=1),  # 384xz28x28
-            nn.BatchNorm2d(384),
-            nn.LeakyReLU(0.1, inplace=True),
-        )
-        self.dec3 = nn.Sequential(
-            nn.ConvTranspose2d(384 + 384, 256, kernel_size=3, stride=2, padding=1, output_padding=1),  # 256x56x56
-            nn.BatchNorm2d(256),
+            nn.ConvTranspose2d(latent_dim, 120, kernel_size=3, stride=2, padding=1, output_padding=1),  # 120x14x14
+            nn.BatchNorm2d(120),
             nn.LeakyReLU(0.1, inplace=True)
         )
+        self.dec2 = nn.Sequential(
+            nn.ConvTranspose2d(120 + 120, 112, kernel_size=3, stride=2, padding=1, output_padding=1),  # 112x28x28
+            nn.BatchNorm2d(112),
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.Dropout2d(0.2)
+        )
+        self.dec3 = nn.Sequential(
+            nn.ConvTranspose2d(112 + 112, 96, kernel_size=3, stride=2, padding=1, output_padding=1),  # 96x56x56
+            nn.BatchNorm2d(96),
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.Dropout2d(0.2)
+        )
         self.dec4 = nn.Sequential(
-            nn.ConvTranspose2d(256 + 256, 128, kernel_size=3, stride=2, padding=1, output_padding=1),  # 128x112x112
-            nn.BatchNorm2d(128),
+            nn.ConvTranspose2d(96 + 96, 80, kernel_size=3, stride=2, padding=1, output_padding=1),  # 80x112x112
+            nn.BatchNorm2d(80),
             nn.LeakyReLU(0.1, inplace=True)
         )
         self.dec5 = nn.Sequential(
-            nn.ConvTranspose2d(128 + 128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),  # 64x224x224
+            nn.ConvTranspose2d(80 + 80, 64, kernel_size=3, stride=2, padding=1, output_padding=1),  # 64x224x224
             nn.BatchNorm2d(64),
             nn.LeakyReLU(0.1, inplace=True)
         )
@@ -80,8 +82,8 @@ class ConvTransposeAE512(nn.Module):
         self.activation = nn.Sigmoid()
 
     def forward(self, x):
-        z = self.encode(x)
-        return self.decode(z)
+        x_latent = self.encode(x)
+        return self.decode(x_latent)
 
     def encode(self, x):
         x0 = self.pre_encoder(x)
@@ -102,5 +104,6 @@ class ConvTransposeAE512(nn.Module):
         d5 = self.dec5(torch.cat([d4, x1], dim=1))
         return self.activation(self.final(d5))
 
-model_class = ConvTransposeAE512
-config_path = "configs/conv/conv_transpose_ae_512.json"
+
+model_class = ConvTransposeAE128
+config_path = "configs/conv/conv_transpose_ae_128.json"
