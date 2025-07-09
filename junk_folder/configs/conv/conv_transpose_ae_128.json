@@ -1,0 +1,14 @@
+{
+  "name": "conv_transpose_ae_128",
+  "image_size": 224,
+  "image_channels": 3,
+  "latent_dim": 128,
+  "batch_size": 256,
+  "num_workers": 28,
+  "epochs": 50,
+  "learning_rate": 0.0002,
+  "weight_decay": 0.00001,
+  "noise_std": 0.1,
+  "val_subset_fraction": 1.0,
+  "early_stopping_patience": 10
+}
