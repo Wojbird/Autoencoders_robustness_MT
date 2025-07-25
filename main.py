@@ -47,7 +47,6 @@ def discover_models(base_dir: str, target: str) -> list:
 
 
 def import_model(module_path: Path):
-    # e.g., models/conv/ae_convtranspose512_7x7.py → models.conv.ae_convtranspose512_7x7
     rel_path = module_path.with_suffix('').relative_to(Path("models"))
     module_name = ".".join(["models"] + list(rel_path.parts))
     module = importlib.import_module(module_name)

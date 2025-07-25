@@ -4,10 +4,6 @@ import shutil
 
 
 def prepare_imagenet100():
-    """
-    Downloads the ImageNet100 dataset using kagglehub and moves it to the datasets/subset_imagenet directory.
-    Skips download if the target directory already contains data.
-    """
     script_dir = os.path.dirname(__file__)
     target_dir = os.path.abspath(os.path.join(script_dir, "..", "datasets", "subset_imagenet"))
 
@@ -29,9 +25,6 @@ def prepare_imagenet100():
 
 
 def _cleanup_empty_dirs(start_path):
-    """
-    Recursively removes empty parent directories starting from 'start_path'.
-    """
     path = os.path.abspath(start_path)
     while True:
         try:

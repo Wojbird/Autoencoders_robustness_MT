@@ -14,6 +14,6 @@
   "top_latent_dim": 512,
   "bottom_latent_dim": 384,
   "top_num_embeddings": 1024,
-  "bottom_num_embeddings": 1024,
+  "bottom_num_embeddings": 2048,
   "commitment_cost": 0.25
 }

@@ -1,8 +1,8 @@
 {
-  "name": "residual_ae_256",
+  "name": "residual_ae_128",
   "image_size": 224,
   "image_channels": 3,
-  "latent_dim": 256,
+  "latent_dim": 128,
   "batch_size": 256,
   "num_workers": 28,
   "epochs": 200,
