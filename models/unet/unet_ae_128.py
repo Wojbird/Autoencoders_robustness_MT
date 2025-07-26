@@ -19,12 +19,12 @@ class UNetBlock(nn.Module):
     def forward(self, x):
         return self.block(x)
 
-class UNetAE256(nn.Module):
+class UNetAE128(nn.Module):
     def __init__(self, config):
         super().__init__()
         image_channels = config["image_channels"]
         latent_dim = config["latent_dim"]
-        assert latent_dim == 256, "Model designed for latent_dim=256"
+        assert latent_dim == 128, "Model designed for latent_dim=128"
 
         self.pool = nn.MaxPool2d(2)
 
@@ -92,5 +92,5 @@ class UNetAE256(nn.Module):
         z = self.encode(x)
         return self.decode(z)
 
-model_class = UNetAE256
-config_path = "configs/unet/unet_ae_256.json"
+model_class = UNetAE128
+config_path = "configs/unet/unet_ae_128.json"

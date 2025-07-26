@@ -18,12 +18,12 @@ class ResBlock(nn.Module):
         return self.leaky_relu(x + self.block(x))
 
 
-class ResidualAutoencoderAE256(nn.Module):
+class ResidualAutoencoderAE128(nn.Module):
     def __init__(self, config):
         super().__init__()
         image_channels = config["image_channels"]
         latent_dim = config["latent_dim"]
-        assert latent_dim == 256, "This model is designed for latent_dim=256"
+        assert latent_dim == 128, "This model is designed for latent_dim=128"
 
         # Pre-encoder: 3 → 32 → 64
         self.pre_encoder = nn.Sequential(
@@ -129,5 +129,5 @@ class ResidualAutoencoderAE256(nn.Module):
         d5 = self.dec5(torch.cat([d4, x1], dim=1))
         return self.activation(self.final(d5))
 
-model_class = ResidualAutoencoderAE256
-config_path = "configs/residual/residual_ae_256.json"
+model_class = ResidualAutoencoderAE128
+config_path = "configs/residual/residual_ae_128.json"
