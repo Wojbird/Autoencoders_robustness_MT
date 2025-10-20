@@ -6,7 +6,7 @@
   "batch_size": 128,
   "num_workers": 28,
   "epochs": 250,
-  "learning_rate": 0.0002,
+  "learning_rate": 0.00015,
   "weight_decay": 0.00001,
   "noise_std": 0.1,
   "val_subset_fraction": 1.0,

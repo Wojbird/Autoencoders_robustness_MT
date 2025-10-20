@@ -10,5 +10,5 @@
   "weight_decay": 0.00001,
   "noise_std": 0.1,
   "val_subset_fraction": 1.0,
-  "early_stopping_patience": 20
+  "early_stopping_patience": 10
 }

@@ -1,5 +1,5 @@
 {
-  "name": "residual_ae_512",
+  "name": "residual_ae_256",
   "image_size": 224,
   "image_channels": 3,
   "latent_dim": 256,

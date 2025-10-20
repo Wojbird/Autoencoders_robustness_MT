@@ -1,7 +1,8 @@
 {
-  "name": "vq_v_ae2_1024",
+  "name": "vq_v_ae_1024",
   "image_size": 224,
   "image_channels": 3,
+  "latent_dim": 1024,
   "batch_size": 64,
   "num_workers": 28,
   "epochs": 300,
@@ -10,10 +11,5 @@
   "noise_std": 0.1,
   "val_subset_fraction": 1.0,
   "early_stopping_patience": 10,
-  "num_embeddings": 4096,
-  "top_latent_dim": 1024,
-  "bottom_latent_dim": 384,
-  "top_num_embeddings": 2048,
-  "bottom_num_embeddings": 2048,
-  "commitment_cost": 0.25
+  "num_embeddings": 4096
 }
