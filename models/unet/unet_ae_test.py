@@ -14,49 +14,47 @@ class UNetBlock(nn.Module):
             nn.LeakyReLU(0.1, inplace=True)
         ]
         if use_dropout:
-            layers.insert(4, nn.Dropout2d(0.2))
+            layers.insert(4, nn.Dropout2d(0.1))
         self.block = nn.Sequential(*layers)
 
     def forward(self, x):
         return self.block(x)
 
 
-class UNetAE1024(nn.Module):
+class UNetAETest(nn.Module):
     def __init__(self, config):
         super().__init__()
         image_channels = config["image_channels"]
         latent_dim = config["latent_dim"]
-        assert latent_dim == 1024, "This model is designed for latent_dim=1024"
+        assert latent_dim == 64, "This model is designed for latent_dim=64"
 
         self.pool = nn.MaxPool2d(2)
 
-        # Encoder
-        self.enc1 = UNetBlock(image_channels, 64)   # 64×224×224
-        self.enc2 = UNetBlock(64, 128)  # 128×112×112
-        self.enc3 = UNetBlock(128, 256, use_dropout=True)   # 256×56×56
-        self.enc4 = UNetBlock(256, 384, use_dropout=True)   # 384×28×28
-        self.enc5 = UNetBlock(384, 512, use_dropout=True)   # 512×14×14
+        # Encoder: 5 levels
+        self.enc1 = UNetBlock(image_channels, 16)
+        self.enc2 = UNetBlock(16, 24)
+        self.enc3 = UNetBlock(24, 32, use_dropout=True)
+        self.enc4 = UNetBlock(32, 48, use_dropout=True)
+        self.enc5 = UNetBlock(48, 56, use_dropout=True)
+        self.bottleneck = UNetBlock(56, latent_dim, use_dropout=True)
 
-        # Bottleneck
-        self.bottleneck = UNetBlock(512, latent_dim, use_dropout=True)  # 1024×7×7
+        # Decoder: 5 levels
+        self.up1 = nn.ConvTranspose2d(latent_dim, 56, kernel_size=2, stride=2)
+        self.dec1 = UNetBlock(56 + 56, 56, use_dropout=True)
 
-        # Decoder
-        self.up1 = nn.ConvTranspose2d(latent_dim, 512, kernel_size=2, stride=2)
-        self.dec1 = UNetBlock(512 + 512, 512, use_dropout=True) # 512×14×14
+        self.up2 = nn.ConvTranspose2d(56, 48, kernel_size=2, stride=2)
+        self.dec2 = UNetBlock(48 + 48, 48, use_dropout=True)
 
-        self.up2 = nn.ConvTranspose2d(512, 384, kernel_size=2, stride=2)
-        self.dec2 = UNetBlock(384 + 384, 384, use_dropout=True) # 384×28×28
+        self.up3 = nn.ConvTranspose2d(48, 32, kernel_size=2, stride=2)
+        self.dec3 = UNetBlock(32 + 32, 32, use_dropout=True)
 
-        self.up3 = nn.ConvTranspose2d(384, 256, kernel_size=2, stride=2)
-        self.dec3 = UNetBlock(256 + 256, 256, use_dropout=True) # 256×56×56
+        self.up4 = nn.ConvTranspose2d(32, 24, kernel_size=2, stride=2)
+        self.dec4 = UNetBlock(24 + 24, 24)
 
-        self.up4 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
-        self.dec4 = UNetBlock(128 + 128, 128)   # 128×112×112
+        self.up5 = nn.ConvTranspose2d(24, 16, kernel_size=2, stride=2)
+        self.dec5 = UNetBlock(16 + 16, 16)
 
-        self.up5 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
-        self.dec5 = UNetBlock(64 + 64, 64)  # 64×224×224
-
-        self.final = nn.Conv2d(64, image_channels, kernel_size=1)   # 3×224×224
+        self.final = nn.Conv2d(16, image_channels, kernel_size=1)
         self.activation = nn.Sigmoid()
 
     def encode(self, x):
@@ -87,12 +85,13 @@ class UNetAE1024(nn.Module):
         d5 = self.up5(d4)
         d5 = self.dec5(torch.cat([d5, e1], dim=1))
 
-        out = self.activation(self.final(d5))
-        return out
+        return self.activation(self.final(d5))
 
     def forward(self, x):
         z = self.encode(x)
         return self.decode(z)
 
-model_class = UNetAE1024
-config_path = "configs/unet/unet_ae_1024.json"
+
+# Required by main.py
+model_class = UNetAETest
+config_path = "configs/test/unet_ae_test.json"
