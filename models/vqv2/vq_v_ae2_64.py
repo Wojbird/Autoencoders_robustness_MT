@@ -38,7 +38,7 @@ class VectorQuantizer(nn.Module):
         return quantized.permute(0, 3, 1, 2).contiguous(), loss
 
 
-class VQVAE2Test(nn.Module):
+class VQVAE264(nn.Module):
     def __init__(self, config):
         super().__init__()
         C = config["image_channels"]
@@ -151,5 +151,5 @@ class VQVAE2Test(nn.Module):
         return result
 
 # Required by main.py
-model_class = VQVAE2Test
-config_path = "configs/vqv2/vq_v_ae2_test.json"
+model_class = VQVAE264
+config_path = "configs/vqv2/vq_v_ae2_64.json"

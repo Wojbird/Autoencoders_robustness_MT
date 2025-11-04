@@ -18,7 +18,7 @@ class ResBlock(nn.Module):
         return self.activation(x + self.block(x))
 
 
-class ResidualAETest(nn.Module):
+class ResidualAE64(nn.Module):
     def __init__(self, config):
         super().__init__()
         image_channels = config["image_channels"]
@@ -134,5 +134,5 @@ class ResidualAETest(nn.Module):
 
 
 # Required by main.py
-model_class = ResidualAETest
-config_path = "configs/residual/residual_ae_test.json"
+model_class = ResidualAE64
+config_path = "configs/residual/residual_ae_64.json"

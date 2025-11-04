@@ -1,5 +1,5 @@
 {
-  "name": "vq_v_ae2_test",
+  "name": "vq_v_ae2_64",
   "image_size": 224,
   "image_channels": 3,
   "batch_size": 32,

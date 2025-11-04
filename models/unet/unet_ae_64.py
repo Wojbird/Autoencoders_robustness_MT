@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+
 class UNetBlock(nn.Module):
     def __init__(self, in_channels, out_channels, use_dropout=False):
         super().__init__()
@@ -19,9 +20,8 @@ class UNetBlock(nn.Module):
     def forward(self, x):
         return self.block(x)
 
-class AdversarialUNetAETest(nn.Module):
-    discriminator_class = None  # Nadpisane poniżej
 
+class UNetAE64(nn.Module):
     def __init__(self, config):
         super().__init__()
         image_channels = config["image_channels"]
@@ -36,8 +36,6 @@ class AdversarialUNetAETest(nn.Module):
         self.enc3 = UNetBlock(24, 32, use_dropout=True)
         self.enc4 = UNetBlock(32, 48, use_dropout=True)
         self.enc5 = UNetBlock(48, 56, use_dropout=True)
-
-        # Bottleneck
         self.bottleneck = UNetBlock(56, latent_dim, use_dropout=True)
 
         # Decoder: 5 levels
@@ -91,38 +89,9 @@ class AdversarialUNetAETest(nn.Module):
 
     def forward(self, x):
         z = self.encode(x)
-        x_hat = self.decode(z)
-        return x_hat, z
+        return self.decode(z)
 
 
-class ImageDiscriminator(nn.Module):
-    def __init__(self, in_channels=3):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Conv2d(in_channels, 64, kernel_size=3, stride=2, padding=1),  # 112x112
-            nn.LeakyReLU(0.2, inplace=True),
-
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # 56x56
-            nn.BatchNorm2d(128),
-            nn.LeakyReLU(0.2, inplace=True),
-
-            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # 28x28
-            nn.BatchNorm2d(256),
-            nn.LeakyReLU(0.2, inplace=True),
-
-            nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1),  # 14x14
-            nn.BatchNorm2d(512),
-            nn.LeakyReLU(0.2, inplace=True),
-
-            nn.AdaptiveAvgPool2d(1),  # (B, 512, 1, 1)
-            nn.Flatten(),
-            nn.Linear(512, 1),
-            nn.Sigmoid()
-        )
-
-    def forward(self, x):
-        return self.net(x)
-
-model_class = AdversarialUNetAETest
-config_path = "configs/adversarial/adversarial_unet_ae_test.json"
-AdversarialUNetAETest.discriminator_class = ImageDiscriminator
+# Required by main.py
+model_class = UNetAE64
+config_path = "configs/unet/unet_ae_64.json"

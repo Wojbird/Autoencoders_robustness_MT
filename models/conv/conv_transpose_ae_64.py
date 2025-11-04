@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-class ConvTransposeAETest(nn.Module):
+class ConvTransposeAE64(nn.Module):
     def __init__(self, config):
         super().__init__()
         image_channels = config["image_channels"]
@@ -104,5 +104,5 @@ class ConvTransposeAETest(nn.Module):
         return self.decode(z)
 
 # Required by main.py
-model_class = ConvTransposeAETest
-config_path = "configs/conv/conv_transpose_ae_test.json"
+model_class = ConvTransposeAE64
+config_path = "configs/conv/conv_transpose_ae_64.json"

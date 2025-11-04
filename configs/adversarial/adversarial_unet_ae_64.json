@@ -1,5 +1,5 @@
 {
-  "name": "residual_ae_test",
+  "name": "adversarial_unet_ae_64",
   "image_size": 224,
   "image_channels": 3,
   "latent_dim": 64,
