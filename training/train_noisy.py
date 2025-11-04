@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import math
 import torch
 import random
 import torch.nn as nn
@@ -23,7 +24,7 @@ def evaluate(loader, model, device):
             x_hat = model(x)
             if isinstance(x_hat, tuple):
                 x_hat = x_hat[0]
-            x_hat = x_hat.clamp(0, 1)
+            x_hat = x_hat.clamp(-1, 1)
             mse_metric.update(x_hat, x)
             psnr_metric.update(x_hat, x)
             ssim_metric.update(x_hat, x)
@@ -70,12 +71,12 @@ def train_model(model_class, config_path, input_variant="noisy", dataset_variant
             discriminator = disc_class().to(device)
             disc_input = "image"
 
-        optimizer_G = torch.optim.Adam(model.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
-        optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
+        optimizer_G = torch.optim.Adam(model.parameters(), lr=config["learning_rate"], betas=(config["betas_start"], config["betas_end"]), weight_decay=config["weight_decay"])
+        optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=config["learning_rate"], betas=(config["betas_start"], config["betas_end"]), weight_decay=config["weight_decay"])
         criterion_recon = nn.MSELoss()
         criterion_adv = nn.BCELoss()
     else:
-        optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
+        optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"], betas=(config["betas_start"], config["betas_end"]), weight_decay=config["weight_decay"])
         criterion = nn.MSELoss()
 
     suffix = f"_{input_variant}"
