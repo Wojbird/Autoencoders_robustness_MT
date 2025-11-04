@@ -61,11 +61,11 @@ def save_images(model, dataloader, device, save_path,
     with torch.no_grad():
         for x, _ in dataloader:
             x = x.to(device)
-            x_vis = x.clone()
+            x_vis = x.clone()  # oryginalne dane wejściowe
 
             if add_noise:
                 x = x + noise_std * torch.randn_like(x)
-                x = torch.clamp(x, 0., 1.)
+                x = torch.clamp(x, -1., 1.)  # UWAGA: zakres (-1,1)
 
             if latent_noise:
                 z = model.encode(x)
@@ -74,9 +74,9 @@ def save_images(model, dataloader, device, save_path,
             else:
                 out = model(x)
 
-            # Obsłuż typ tuple
+            # Obsłuż tuple lub list
             out_tensor = out[0] if isinstance(out, (tuple, list)) else out
-            out_tensor = out_tensor.clamp(0., 1.).cpu()
+            out_tensor = out_tensor.clamp(-1., 1.).cpu()  # clamp w zakresie (-1,1)
             x_vis = x_vis.cpu()
 
             for i in range(min(x_vis.shape[0], num_images - images_shown)):
@@ -86,6 +86,10 @@ def save_images(model, dataloader, device, save_path,
 
             if images_shown >= num_images:
                 break
+
+    # Przeskalowanie
+    images_orig = [(img.clamp(-1., 1.) + 1) / 2 for img in images_orig]
+    images_recon = [(img.clamp(-1., 1.) + 1) / 2 for img in images_recon]
 
     # Stwórz siatkę obrazów
     pairs = []
@@ -98,6 +102,6 @@ def save_images(model, dataloader, device, save_path,
 
     plt.figure(figsize=(num_images * 2, 4))
     plt.axis("off")
-    plt.imshow(grid.permute(1, 2, 0))
+    plt.imshow(grid.permute(1, 2, 0))  # dane już są w [0,1]
     plt.savefig(save_path, bbox_inches="tight")
     plt.close()

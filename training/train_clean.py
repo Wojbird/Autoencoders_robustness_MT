@@ -9,12 +9,12 @@ from torchmetrics import MeanSquaredError
 from torchmetrics.image import StructuralSimilarityIndexMeasure, PeakSignalNoiseRatio
 
 from data.data_setter import get_subnet_datasets, get_imagenet_datasets
-from utils.helpers import get_device, save_images, plot_metrics
+from utils.helpers import get_device, save_images, plot_metrics, set_seed
 
 def evaluate(loader, model, device):
     mse_metric = MeanSquaredError().to(device)
-    psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(device)
-    ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
+    psnr_metric = PeakSignalNoiseRatio(data_range=2.0).to(device)
+    ssim_metric = StructuralSimilarityIndexMeasure(data_range=2.0).to(device)
 
     model.eval()
     with torch.no_grad():
@@ -38,6 +38,7 @@ def train_model(model_class, config_path, input_variant="clean", dataset_variant
     with open(config_path, "r") as f:
         config = json.load(f)
 
+    set_seed(int(config.get("seed", 1337)))
     device = get_device() # GPU
 
     if dataset_variant == "subset":

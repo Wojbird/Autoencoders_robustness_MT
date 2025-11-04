@@ -110,7 +110,7 @@ class VQVAE2Test(nn.Module):
         )
         self.final = nn.Sequential(
             nn.Conv2d(16, C, kernel_size=3, padding=1),
-            nn.Sigmoid(),
+            nn.Tanh(),
         )
 
     def encode(self, x):

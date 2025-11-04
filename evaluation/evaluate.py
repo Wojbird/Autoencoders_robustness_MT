@@ -53,8 +53,8 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
     metrics_path = os.path.join(result_dir, "metrics.txt")
 
     mse_metric = MeanSquaredError().to(device)
-    psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(device)
-    ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
+    psnr_metric = PeakSignalNoiseRatio(data_range=2.0).to(device)
+    ssim_metric = StructuralSimilarityIndexMeasure(data_range=2.0).to(device)
 
     # metrics.txt to save
     with torch.no_grad(), open(metrics_path, "w") as f_out:

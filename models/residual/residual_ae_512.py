@@ -107,7 +107,7 @@ class ResidualAutoencoderAE512(nn.Module):
         )
 
         self.final = nn.Conv2d(64, image_channels, kernel_size=3, padding=1)    # 3x224x224
-        self.activation = nn.Sigmoid()
+        self.activation = nn.Tanh()
 
     def forward(self, x):
         z = self.encode(x)
