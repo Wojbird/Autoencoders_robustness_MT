@@ -124,5 +124,5 @@ class ImageDiscriminator(nn.Module):
         return self.net(x)
 
 model_class = AdversarialUNetAETest
-config_path = "configs/test/adversarial_unet_ae_test.json"
+config_path = "configs/adversarial/adversarial_unet_ae_test.json"
 AdversarialUNetAETest.discriminator_class = ImageDiscriminator

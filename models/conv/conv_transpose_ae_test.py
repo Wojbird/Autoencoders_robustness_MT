@@ -105,4 +105,4 @@ class ConvTransposeAETest(nn.Module):
 
 # Required by main.py
 model_class = ConvTransposeAETest
-config_path = "configs/test/conv_transpose_ae_test.json"
+config_path = "configs/conv/conv_transpose_ae_test.json"
