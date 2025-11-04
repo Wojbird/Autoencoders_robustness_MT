@@ -135,4 +135,4 @@ class ResidualAETest(nn.Module):
 
 # Required by main.py
 model_class = ResidualAETest
-config_path = "configs/test/residual_ae_test.json"
+config_path = "configs/residual/residual_ae_test.json"

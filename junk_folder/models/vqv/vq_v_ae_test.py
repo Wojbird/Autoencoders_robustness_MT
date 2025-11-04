@@ -148,4 +148,4 @@ class VQVAETest(nn.Module):
 
 # Required by main.py
 model_class = VQVAETest
-config_path = "configs/test/vq_v_ae_test.json"
+config_path = "configs/vqv/vq_v_ae_test.json"
