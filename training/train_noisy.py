@@ -113,7 +113,7 @@ def train_model(model_class, config_path, input_variant="noisy", dataset_variant
         for batch_idx, (x, _) in enumerate(train_loader):
             x = x.to(device)
             noise = torch.randn_like(x) * noise_std # normal noise with deviation noise_std
-            x_noisy = (x + noise).clamp(0.0, 1.0) # noise + image [0, 1]
+            x_noisy = (x + noise).clamp(-1.0, 1.0) # noise + image [-1, 1]
 
             if is_adversarial:
                 valid = torch.ones((x.size(0), 1), device=device) # "real" labels
