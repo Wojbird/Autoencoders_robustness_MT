@@ -4,14 +4,13 @@ from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMe
 
 
 def _compute_metrics(model, dataloader, device, noise_std=0.0, latent=False):
-    """ Unified TorchMetrics-based evaluation for AE or latent-AE. """
     if len(dataloader) == 0:
         raise ValueError("Provided dataloader is empty. Cannot compute metrics.")
 
     model.eval()
     mse_metric = MeanSquaredError().to(device)
-    psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(device)
-    ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
+    psnr_metric = PeakSignalNoiseRatio(data_range=2.0).to(device)
+    ssim_metric = StructuralSimilarityIndexMeasure(data_range=2.0).to(device)
 
     with torch.no_grad():
         for x, _ in dataloader:
@@ -22,10 +21,16 @@ def _compute_metrics(model, dataloader, device, noise_std=0.0, latent=False):
                 z_noisy = z + noise_std * torch.randn_like(z)
                 x_hat = model.decode(z_noisy)
             else:
-                x_input = torch.clamp(x + noise_std * torch.randn_like(x), 0., 1.) if noise_std > 0 else x
+                if noise_std > 0.0:
+                    x_input = x + noise_std * torch.randn_like(x)
+                    x_input = x_input.clamp(-1.0, 1.0)
+                else:
+                    x_input = x
                 x_hat = model(x_input)
 
-            x_hat = x_hat.clamp(0, 1)
+            if isinstance(x_hat, (tuple, list)):
+                x_hat = x_hat[0]
+            x_hat = x_hat.clamp(-1.0, 1.0)
 
             mse_metric.update(x_hat, x)
             psnr_metric.update(x_hat, x)
