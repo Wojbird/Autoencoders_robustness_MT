@@ -92,7 +92,7 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
             ssim_metric.update(x_hat, x)
 
             mse_val = torch.nn.functional.mse_loss(x_hat, x).item()
-            psnr_val = 10 * torch.log10(torch.tensor(1.0) / (mse_val + 1e-10)).item()
+            psnr_val = 10 * torch.log10(torch.tensor(4.0) / (mse_val + 1e-10)).item()
             ssim_val = ssim_metric(x_hat, x).item()
 
             f_out.write(f"{idx}\t{mse_val:.6f}\t{psnr_val:.6f}\t{ssim_val:.6f}\n")
