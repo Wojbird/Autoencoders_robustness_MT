@@ -15,8 +15,8 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
     suffix = f"_{input_variant}"
     pretrained_path = config.get("pretrained_path", os.path.join("checkpoints", config["name"] + suffix + ".pth"))
 
-    # Wczesne pominięcie: model nieobsługiwany w noisy-latent
-    if input_variant == "noisy-latent":
+    # Wczesne pominięcie: model nieobsługiwany w noisy_latent
+    if input_variant == "noisy_latent":
         test_model = model_class(config)
         if hasattr(test_model, "quantizer") or hasattr(test_model, "top_quantizer"):
             print(
@@ -73,7 +73,7 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
             if input_variant == "noisy":
                 x_input = torch.clamp(x + noise_std * torch.randn_like(x), -1.0, 1.0)
                 out = model(x_input)
-            elif input_variant == "noisy-latent":
+            elif input_variant == "noisy_latent":
                 z = model.encode(x)
                 if isinstance(z, tuple):
                     z_noisy = tuple(lat + noise_std * torch.randn_like(lat) for lat in z)
@@ -119,6 +119,6 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
         save_path=os.path.join(result_dir, "images", "examples.png"),
         num_images=10,
         add_noise=(input_variant == "noisy"),
-        latent_noise=(input_variant == "noisy-latent"),
+        latent_noise=(input_variant == "noisy_latent"),
         noise_std=noise_std
     )
