@@ -19,8 +19,12 @@ def _compute_metrics(model, dataloader, device, noise_std=0.0, latent=False):
 
             if latent:
                 z = model.encode(x)
-                z_noisy = z + noise_std * torch.randn_like(z)
-                x_hat = model.decode(z_noisy)
+                if isinstance(z, tuple):
+                    z_noisy = tuple(lat + noise_std * torch.randn_like(lat) for lat in z)
+                    x_hat = model.decode(*z_noisy)
+                else:
+                    z_noisy = z + noise_std * torch.randn_like(z)
+                    x_hat = model.decode(z_noisy)
             else:
                 if noise_std > 0.0:
                     x_input = torch.clamp(x + noise_std * torch.randn_like(x), -1.0, 1.0)
