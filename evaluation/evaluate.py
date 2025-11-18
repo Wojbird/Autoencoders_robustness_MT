@@ -8,29 +8,31 @@ from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMe
 from data.data_setter import get_subnet_datasets, get_imagenet_datasets
 from utils.helpers import get_device, save_images
 
-
 def evaluate_model(model_class, config_path, input_variant="clean", dataset_variant="subset", log=False):
     with open(config_path, "r") as f:
         config = json.load(f)
 
     suffix = f"_{input_variant}"
-    default_ckpt = os.path.join("checkpoints", config["name"] + suffix + ".pth")
-    pretrained_path = config.get("pretrained_path", default_ckpt)
+    pretrained_path = config.get("pretrained_path", os.path.join("checkpoints", config["name"] + suffix + ".pth"))
+
+    # Wczesne pominięcie: model nieobsługiwany w noisy-latent
+    if input_variant == "noisy-latent":
+        test_model = model_class(config)
+        if hasattr(test_model, "quantizer") or hasattr(test_model, "top_quantizer"):
+            print(
+                f"[INFO] Skipping evaluation: Model {test_model.__class__.__name__} is not supported in noisy_latent mode.")
+            return
+        if not os.path.exists(pretrained_path):
+            print(f"[INFO] Skipping evaluation: Checkpoint not found: {pretrained_path}")
+            return
+        model = test_model.to(get_device())  # GPU
+    else:
+        if not os.path.exists(pretrained_path):
+            print(f"[INFO] Skipping evaluation: Checkpoint not found: {pretrained_path}")
+            return
+        model = model_class(config).to(get_device())
 
     device = get_device()
-    model = model_class(config).to(device)
-
-    # Wczesne pominięcie: model nieobsługiwany w noisy_latent
-    if input_variant == "noisy_latent":
-        if hasattr(model, "quantizer") or hasattr(model, "top_quantizer") or hasattr(model, "bottom_quantizer") \
-           or hasattr(model, "vq_loss") or hasattr(model, "vq_losses") \
-           or ("vq" in model.__class__.__name__.lower()):
-            print(f"[INFO] Skipping evaluation: Model {model.__class__.__name__} is not supported in noisy_latent mode.")
-            return
-
-    if not os.path.exists(pretrained_path):
-        print(f"[INFO] Skipping evaluation: Checkpoint not found: {pretrained_path}")
-        return
 
     if dataset_variant == "subset":
         _, val_set = get_subnet_datasets(image_size=config["image_size"])  # Subnet of ImageNet
@@ -46,7 +48,7 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=True,
+        pin_memory=True
     )
 
     # Wczytaj wytrenowane wagi
@@ -66,15 +68,12 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
         f_out.write("idx\tmse\tpsnr\tssim\n")
 
         for idx, (x, _) in enumerate(val_loader):
-            x = x.to(device)  # x w [-1, 1]
+            x = x.to(device)
 
             if input_variant == "noisy":
-                # szum w przestrzeni wejściowej, clamp do [-1,1]
-                x_input = x + noise_std * torch.randn_like(x)
-                x_input = x_input.clamp(-1.0, 1.0)
+                x_input = torch.clamp(x + noise_std * torch.randn_like(x), -1.0, 1.0)
                 out = model(x_input)
-            elif input_variant == "noisy_latent":
-                # szum w przestrzeni latentnej
+            elif input_variant == "noisy-latent":
                 z = model.encode(x)
                 if isinstance(z, tuple):
                     z_noisy = tuple(lat + noise_std * torch.randn_like(lat) for lat in z)
@@ -82,25 +81,19 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
                 else:
                     z_noisy = z + noise_std * torch.randn_like(z)
                     out = model.decode(z_noisy)
-            else:  # "clean"
+            else:
                 out = model(x)
 
-            # Jeśli model zwraca tuple/listę, bierzemy rekonstrukcję jako pierwszy element
             x_hat = out[0] if isinstance(out, (tuple, list)) else out
-            x_hat = x_hat.clamp(-1.0, 1.0)
+            x_hat = x_hat.clamp(-1, 1)
 
-            # Aktualizacja metryk globalnych
             mse_metric.update(x_hat, x)
             psnr_metric.update(x_hat, x)
             ssim_metric.update(x_hat, x)
 
-            # Per-batch MSE / PSNR / SSIM do logu
             mse_val = torch.nn.functional.mse_loss(x_hat, x).item()
-            # PSNR dla data_range = 2.0 -> max_I^2 = 4.0
-            psnr_val = 10 * torch.log10(torch.tensor(4.0) / (mse_val + 1e-10)).item()
-            # SSIM per batch – osobna instancja, żeby nie mieszać ze średnią
-            ssim_batch_metric = StructuralSimilarityIndexMeasure(data_range=2.0).to(device)
-            ssim_val = ssim_batch_metric(x_hat, x).item()
+            psnr_val = 10 * torch.log10(torch.tensor(1.0) / (mse_val + 1e-10)).item()
+            ssim_val = ssim_metric(x_hat, x).item()
 
             f_out.write(f"{idx}\t{mse_val:.6f}\t{psnr_val:.6f}\t{ssim_val:.6f}\n")
 
@@ -110,14 +103,14 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
 
         f_out.write(f"avg\t{mse_avg:.6f}\t{psnr_avg:.6f}\t{ssim_avg:.6f}\n")
 
-    # konsola (opcjonalnie)
+    # logs
     if log:
         print(f"\nEvaluation results ({input_variant}):")
         print(f"  MSE:  {mse_avg:.6f}")
         print(f"  PSNR: {psnr_avg:.6f}")
         print(f"  SSIM: {ssim_avg:.6f}")
 
-    # przykładowe obrazy (rekonstrukcje)
+    # sample images
     save_images(
         model,
         val_loader,
@@ -125,6 +118,6 @@ def evaluate_model(model_class, config_path, input_variant="clean", dataset_vari
         save_path=os.path.join(result_dir, "images", "examples.png"),
         num_images=10,
         add_noise=(input_variant == "noisy"),
-        latent_noise=(input_variant == "noisy_latent"),
-        noise_std=noise_std,
+        latent_noise=(input_variant == "noisy-latent"),
+        noise_std=noise_std
     )
