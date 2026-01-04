@@ -6,21 +6,23 @@ import matplotlib.pyplot as plt
 from torchvision.utils import make_grid
 
 
-def set_seed(seed: int):
+def set_seed(seed: int, deterministic: bool = False):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
+    if deterministic:
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+def setup_device(deterministic: bool = False, num_threads: int = 4):
+    torch.set_num_threads(num_threads)
+    torch.backends.cudnn.benchmark = not deterministic
+    torch.backends.cudnn.deterministic = deterministic
 
 def get_device():
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-def setup_device():
-    torch.set_num_threads(4)
-    torch.backends.cudnn.benchmark = True
-
 
 def save_metrics(metrics_dict, save_path):
     with open(save_path, "w") as f:
@@ -28,7 +30,7 @@ def save_metrics(metrics_dict, save_path):
             if isinstance(v, list):
                 f.write(f"{k}: {','.join(f'{x:.6f}' for x in v)}\n")
             else:
-                f.write(f"{k}: {v:.6f}\n")
+                f.write(f"{k}: {v}\n")
 
 
 def plot_metrics(metrics_dict, save_dir):
@@ -52,8 +54,14 @@ def plot_metrics(metrics_dict, save_dir):
 
 
 def save_images(model, dataloader, device, save_path,
-                num_images=8, add_noise=False, latent_noise=False, noise_std=0.1):
+                num_images=8, add_noise=False, latent_noise=False, noise_std=0.1, seed=None):
     model.eval()
+
+    g = None
+    if seed is not None:
+        g = torch.Generator(device=device)
+        g.manual_seed(int(seed))
+
     images_shown = 0
     images_orig = []
     images_recon = []
@@ -61,22 +69,27 @@ def save_images(model, dataloader, device, save_path,
     with torch.no_grad():
         for x, _ in dataloader:
             x = x.to(device)
-            x_vis = x.clone()  # oryginalne dane wejściowe
+            x_vis = x.clone()
 
             if add_noise:
-                x = x + noise_std * torch.randn_like(x)
-                x = torch.clamp(x, -1., 1.)  # UWAGA: zakres (-1,1)
+                if g is None:
+                    noise = torch.randn_like(x) * noise_std
+                else:
+                    noise = torch.randn(x.shape, device=x.device, generator=g) * noise_std
+                x = torch.clamp(x + noise, -1., 1.)
 
             if latent_noise:
                 z = model.encode(x)
-                z = z + noise_std * torch.randn_like(z)
-                out = model.decode(z)
+                if g is None:
+                    eps = torch.randn_like(z) * noise_std
+                else:
+                    eps = torch.randn(z.shape, device=z.device, generator=g) * noise_std
+                out = model.decode(z + eps)
             else:
                 out = model(x)
 
-            # Obsłuż tuple lub list
             out_tensor = out[0] if isinstance(out, (tuple, list)) else out
-            out_tensor = out_tensor.clamp(-1., 1.).cpu()  # clamp w zakresie (-1,1)
+            out_tensor = out_tensor.clamp(-1., 1.).cpu()
             x_vis = x_vis.cpu()
 
             for i in range(min(x_vis.shape[0], num_images - images_shown)):
@@ -87,21 +100,15 @@ def save_images(model, dataloader, device, save_path,
             if images_shown >= num_images:
                 break
 
-    # Przeskalowanie
     images_orig = [(img.clamp(-1., 1.) + 1) / 2 for img in images_orig]
     images_recon = [(img.clamp(-1., 1.) + 1) / 2 for img in images_recon]
 
-    # Stwórz siatkę obrazów
-    pairs = []
-    for i in range(images_shown):
-        pair = torch.stack([images_orig[i], images_recon[i]])
-        pairs.append(pair)
-
+    pairs = [torch.stack([images_orig[i], images_recon[i]]) for i in range(images_shown)]
     all_images = torch.cat(pairs, dim=0)
     grid = make_grid(all_images, nrow=2, padding=10)
 
     plt.figure(figsize=(num_images * 2, 4))
     plt.axis("off")
-    plt.imshow(grid.permute(1, 2, 0))  # dane już są w [0,1]
+    plt.imshow(grid.permute(1, 2, 0))
     plt.savefig(save_path, bbox_inches="tight")
     plt.close()
