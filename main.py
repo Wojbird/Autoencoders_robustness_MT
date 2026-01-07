@@ -5,9 +5,9 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 
-from training.train_clean import train_model as train_clean_model
-from training.train_noisy import train_model as train_noisy_model
-from training.train_noisy_latent import train_model as train_noisy_latent_model
+from training.train_clean import train_clean_model
+from training.train_noisy import train_noisy_model
+from training.train_noisy_latent import train_noisy_latent_model
 from evaluation.evaluate import evaluate_model
 from utils.helpers import set_seed, setup_device
 
@@ -72,22 +72,16 @@ def run(mode, model_path: Path, input_type, dataset_type, log):
 
     if mode in ("train", "train_test"):
         if input_type == "clean":
-            train_clean_model(model_class, config_path, input_variant=input_type,
-                              dataset_variant=dataset_type, log=log)
+            train_clean_model() #to do
         elif input_type == "noisy":
-            train_noisy_model(model_class, config_path, input_variant=input_type,
-                              dataset_variant=dataset_type, log=log)
+            train_noisy_model() #to do
         elif input_type == "noisy_latent":
-            train_noisy_latent_model(model_class, config_path, input_variant=input_type,
-                                     dataset_variant=dataset_type, log=log)
+            train_noisy_latent_model() #to do
         else:
             raise ValueError(f"Unknown input type: {input_type}")
 
     if mode in ("test", "train_test"):
-        evaluate_model(model_class, config_path,
-                       input_variant=input_type,
-                       dataset_variant=dataset_type,
-                       log=log)
+        evaluate_model() #to do
 
 
 def main():

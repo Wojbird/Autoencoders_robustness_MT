@@ -4,7 +4,6 @@ from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMe
 
 
 def _compute_metrics(model, dataloader, device, noise_std=0.0, latent=False):
-    """ Unified TorchMetrics-based evaluation for AE or latent-AE. """
     if len(dataloader) == 0:
         raise ValueError("Provided dataloader is empty. Cannot compute metrics.")
 

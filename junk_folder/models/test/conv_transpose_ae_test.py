@@ -57,22 +57,22 @@ class ConvTransposeAETest(nn.Module):
             nn.LeakyReLU(0.1, inplace=True),
         )
         self.dec2 = nn.Sequential(
-            nn.ConvTranspose2d(56 + 56, 48, kernel_size=3, stride=2, padding=1, output_padding=1),  # 28x28
+            nn.ConvTranspose2d(56, 48, kernel_size=3, stride=2, padding=1, output_padding=1),  # 28x28
             nn.BatchNorm2d(48),
             nn.LeakyReLU(0.1, inplace=True),
         )
         self.dec3 = nn.Sequential(
-            nn.ConvTranspose2d(48 + 48, 32, kernel_size=3, stride=2, padding=1, output_padding=1),  # 56x56
+            nn.ConvTranspose2d(48, 32, kernel_size=3, stride=2, padding=1, output_padding=1),  # 56x56
             nn.BatchNorm2d(32),
             nn.LeakyReLU(0.1, inplace=True),
         )
         self.dec4 = nn.Sequential(
-            nn.ConvTranspose2d(32 + 32, 24, kernel_size=3, stride=2, padding=1, output_padding=1),  # 112x112
+            nn.ConvTranspose2d(32, 24, kernel_size=3, stride=2, padding=1, output_padding=1),  # 112x112
             nn.BatchNorm2d(24),
             nn.LeakyReLU(0.1, inplace=True),
         )
         self.dec5 = nn.Sequential(
-            nn.ConvTranspose2d(24 + 24, 16, kernel_size=3, stride=2, padding=1, output_padding=1),  # 224x224
+            nn.ConvTranspose2d(24, 16, kernel_size=3, stride=2, padding=1, output_padding=1),  # 224x224
             nn.BatchNorm2d(16),
             nn.LeakyReLU(0.1, inplace=True)
         )
@@ -82,21 +82,19 @@ class ConvTransposeAETest(nn.Module):
 
     def encode(self, x):
         x0 = self.pre_encoder(x)  # 224x224
-        x1 = self.enc1(x0)        # 112x112
-        x2 = self.enc2(x1)        # 56x56
-        x3 = self.enc3(x2)        # 28x28
-        x4 = self.enc4(x3)        # 14x14
-        x5 = self.enc5(x4)        # 7x7
-        self._skips = [x1, x2, x3, x4]
+        x1 = self.enc1(x0)  # 112x112
+        x2 = self.enc2(x1)  # 56x56
+        x3 = self.enc3(x2)  # 28x28
+        x4 = self.enc4(x3)  # 14x14
+        x5 = self.enc5(x4)  # 7x7
         return x5
 
     def decode(self, z):
-        x1, x2, x3, x4 = self._skips  # correct order
         d1 = self.dec1(z)  # 14x14
-        d2 = self.dec2(torch.cat([d1, x4], dim=1))  # 28x28
-        d3 = self.dec3(torch.cat([d2, x3], dim=1))  # 56x56
-        d4 = self.dec4(torch.cat([d3, x2], dim=1))  # 112x112
-        d5 = self.dec5(torch.cat([d4, x1], dim=1))  # 224x224
+        d2 = self.dec2(d1)  # 28x28
+        d3 = self.dec3(d2)  # 56x56
+        d4 = self.dec4(d3)  # 112x112
+        d5 = self.dec5(d4)  # 224x224
         return self.activation(self.final(d5))
 
     def forward(self, x):
