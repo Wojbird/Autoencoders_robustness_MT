@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 
-
 class UNetBlock(nn.Module):
     def __init__(self, in_channels, out_channels, use_dropout=False):
         super().__init__()
@@ -20,8 +19,9 @@ class UNetBlock(nn.Module):
     def forward(self, x):
         return self.block(x)
 
+class AdversarialUNetAETest(nn.Module):
+    discriminator_class = None  # Nadpisane poniżej
 
-class UNetAETest(nn.Module):
     def __init__(self, config):
         super().__init__()
         image_channels = config["image_channels"]
@@ -36,23 +36,25 @@ class UNetAETest(nn.Module):
         self.enc3 = UNetBlock(24, 32, use_dropout=True)
         self.enc4 = UNetBlock(32, 48, use_dropout=True)
         self.enc5 = UNetBlock(48, 56, use_dropout=True)
+
+        # Bottleneck
         self.bottleneck = UNetBlock(56, latent_dim, use_dropout=True)
 
         # Decoder: 5 levels
         self.up1 = nn.ConvTranspose2d(latent_dim, 56, kernel_size=2, stride=2)
-        self.dec1 = UNetBlock(56 + 56, 56, use_dropout=True)
+        self.dec1 = UNetBlock(56, 56, use_dropout=True)
 
         self.up2 = nn.ConvTranspose2d(56, 48, kernel_size=2, stride=2)
-        self.dec2 = UNetBlock(48 + 48, 48, use_dropout=True)
+        self.dec2 = UNetBlock(48, 48, use_dropout=True)
 
         self.up3 = nn.ConvTranspose2d(48, 32, kernel_size=2, stride=2)
-        self.dec3 = UNetBlock(32 + 32, 32, use_dropout=True)
+        self.dec3 = UNetBlock(32, 32, use_dropout=True)
 
         self.up4 = nn.ConvTranspose2d(32, 24, kernel_size=2, stride=2)
-        self.dec4 = UNetBlock(24 + 24, 24)
+        self.dec4 = UNetBlock(24, 24)
 
         self.up5 = nn.ConvTranspose2d(24, 16, kernel_size=2, stride=2)
-        self.dec5 = UNetBlock(16 + 16, 16)
+        self.dec5 = UNetBlock(16, 16)
 
         self.final = nn.Conv2d(16, image_channels, kernel_size=1)
         self.activation = nn.Tanh()
@@ -64,34 +66,50 @@ class UNetAETest(nn.Module):
         e4 = self.enc4(self.pool(e3))
         e5 = self.enc5(self.pool(e4))
         z = self.bottleneck(self.pool(e5))
-        self._skips = [e1, e2, e3, e4, e5]
         return z
 
     def decode(self, z):
-        e1, e2, e3, e4, e5 = self._skips
-
         d1 = self.up1(z)
-        d1 = self.dec1(torch.cat([d1, e5], dim=1))
-
         d2 = self.up2(d1)
-        d2 = self.dec2(torch.cat([d2, e4], dim=1))
-
         d3 = self.up3(d2)
-        d3 = self.dec3(torch.cat([d3, e3], dim=1))
-
         d4 = self.up4(d3)
-        d4 = self.dec4(torch.cat([d4, e2], dim=1))
-
         d5 = self.up5(d4)
-        d5 = self.dec5(torch.cat([d5, e1], dim=1))
-
         return self.activation(self.final(d5))
 
     def forward(self, x):
         z = self.encode(x)
-        return self.decode(z)
+        x_hat = self.decode(z)
+        return x_hat, z
 
 
-# Required by main.py
-model_class = UNetAETest
-config_path = "configs/test/unet_ae_test.json"
+class ImageDiscriminator(nn.Module):
+    def __init__(self, in_channels=3):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv2d(in_channels, 64, kernel_size=3, stride=2, padding=1),  # 112x112
+            nn.LeakyReLU(0.2, inplace=True),
+
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # 56x56
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2, inplace=True),
+
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # 28x28
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2, inplace=True),
+
+            nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1),  # 14x14
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, inplace=True),
+
+            nn.AdaptiveAvgPool2d(1),  # (B, 512, 1, 1)
+            nn.Flatten(),
+            nn.Linear(512, 1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+model_class = AdversarialUNetAETest
+config_path = "configs/test/adversarial_unet_ae_test.json"
+AdversarialUNetAETest.discriminator_class = ImageDiscriminator

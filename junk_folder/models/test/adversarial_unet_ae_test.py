@@ -57,7 +57,7 @@ class AdversarialUNetAETest(nn.Module):
         self.dec5 = UNetBlock(16 + 16, 16)
 
         self.final = nn.Conv2d(16, image_channels, kernel_size=1)
-        self.activation = nn.Sigmoid()
+        self.activation = nn.Tanh()
 
     def encode(self, x):
         e1 = self.enc1(x)

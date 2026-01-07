@@ -40,19 +40,19 @@ class UNetAETest(nn.Module):
 
         # Decoder: 5 levels
         self.up1 = nn.ConvTranspose2d(latent_dim, 56, kernel_size=2, stride=2)
-        self.dec1 = UNetBlock(56 + 56, 56, use_dropout=True)
+        self.dec1 = UNetBlock(56, 56, use_dropout=True)
 
         self.up2 = nn.ConvTranspose2d(56, 48, kernel_size=2, stride=2)
-        self.dec2 = UNetBlock(48 + 48, 48, use_dropout=True)
+        self.dec2 = UNetBlock(48, 48, use_dropout=True)
 
         self.up3 = nn.ConvTranspose2d(48, 32, kernel_size=2, stride=2)
-        self.dec3 = UNetBlock(32 + 32, 32, use_dropout=True)
+        self.dec3 = UNetBlock(32, 32, use_dropout=True)
 
         self.up4 = nn.ConvTranspose2d(32, 24, kernel_size=2, stride=2)
-        self.dec4 = UNetBlock(24 + 24, 24)
+        self.dec4 = UNetBlock(24, 24)
 
         self.up5 = nn.ConvTranspose2d(24, 16, kernel_size=2, stride=2)
-        self.dec5 = UNetBlock(16 + 16, 16)
+        self.dec5 = UNetBlock(16, 16)
 
         self.final = nn.Conv2d(16, image_channels, kernel_size=1)
         self.activation = nn.Tanh()
@@ -64,27 +64,14 @@ class UNetAETest(nn.Module):
         e4 = self.enc4(self.pool(e3))
         e5 = self.enc5(self.pool(e4))
         z = self.bottleneck(self.pool(e5))
-        self._skips = [e1, e2, e3, e4, e5]
         return z
 
     def decode(self, z):
-        e1, e2, e3, e4, e5 = self._skips
-
         d1 = self.up1(z)
-        d1 = self.dec1(torch.cat([d1, e5], dim=1))
-
         d2 = self.up2(d1)
-        d2 = self.dec2(torch.cat([d2, e4], dim=1))
-
         d3 = self.up3(d2)
-        d3 = self.dec3(torch.cat([d3, e3], dim=1))
-
         d4 = self.up4(d3)
-        d4 = self.dec4(torch.cat([d4, e2], dim=1))
-
         d5 = self.up5(d4)
-        d5 = self.dec5(torch.cat([d5, e1], dim=1))
-
         return self.activation(self.final(d5))
 
     def forward(self, x):
