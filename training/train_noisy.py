@@ -126,7 +126,7 @@ def train_noisy_model(
 
             if log:
                 logger.info(
-                    f"[{variant}] Epoch {epoch}/{epochs} | "
+                    f"Epoch {epoch}/{epochs} | "
                     f"train_loss={train_loss:.6f} | "
                     f"val_loss={val_eval.loss:.6f} | "
                     f"PSNR={val_eval.psnr:.2f} | "
