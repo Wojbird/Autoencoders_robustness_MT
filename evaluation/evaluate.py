@@ -1,60 +1,9 @@
 import os
-from dataclasses import dataclass
 from typing import Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-from torchmetrics import MeanSquaredError
-from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
-
-
-@dataclass
-class EvalResult:
-    loss: float
-    mse: float
-    psnr: float
-    ssim: float
-
-
-def _get_vq_reg_loss(model: nn.Module) -> torch.Tensor:
-    """
-    Returns VQ regularization loss stored inside the model (if any).
-    Supports:
-      - model.vq_loss (scalar tensor)
-      - model.vq_losses (list/tuple of scalar tensors or dict of scalar tensors)
-    If nothing exists, returns 0 on the correct device.
-    """
-    device = next(model.parameters()).device
-
-    if hasattr(model, "vq_loss") and getattr(model, "vq_loss") is not None:
-        v = getattr(model, "vq_loss")
-        if torch.is_tensor(v):
-            return v.to(device)
-        return torch.tensor(float(v), device=device)
-
-    if hasattr(model, "vq_losses") and getattr(model, "vq_losses") is not None:
-        v = getattr(model, "vq_losses")
-        if isinstance(v, dict):
-            vals = list(v.values())
-        else:
-            vals = list(v)
-
-        if len(vals) == 0:
-            return torch.zeros((), device=device)
-
-        out = torch.zeros((), device=device)
-        for t in vals:
-            out = out + (t.to(device) if torch.is_tensor(t) else torch.tensor(float(t), device=device))
-        return out
-
-    return torch.zeros((), device=device)
-
-
-def _make_metrics(device: torch.device):
-    mse = MeanSquaredError().to(device)
-    psnr = PeakSignalNoiseRatio(data_range=1.0).to(device)
-    ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
-    return mse, psnr, ssim
+from utils.helpers import get_vq_reg_loss, make_metrics, EvalResult
 
 
 @torch.no_grad()
@@ -80,7 +29,7 @@ def evaluate_reconstruction(
     model.eval()
     loss_fn = nn.MSELoss()
 
-    mse_metric, psnr_metric, ssim_metric = _make_metrics(device)
+    mse_metric, psnr_metric, ssim_metric = make_metrics(device)
 
     loss_sum = 0.0
     n_batches = 0
@@ -138,7 +87,7 @@ def compute_training_loss(
     recon = nn.MSELoss()(x_hat, x_target)
     if not allow_vq:
         return recon
-    return recon + _get_vq_reg_loss(model)
+    return recon + get_vq_reg_loss(model)
 
 
 @torch.no_grad()

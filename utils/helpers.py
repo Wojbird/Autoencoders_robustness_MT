@@ -6,9 +6,12 @@ import csv
 import numpy as np
 from typing import Dict
 import matplotlib.pyplot as plt
+
 from dataclasses import dataclass
 from torchvision.utils import make_grid
 from torch.utils.data import random_split
+from torchmetrics import MeanSquaredError
+from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 
 
 def set_seed(seed: int):
@@ -107,6 +110,7 @@ def save_images(model, dataloader, device, save_path,
     plt.savefig(save_path, bbox_inches="tight")
     plt.close()
 
+
 @dataclass
 class EarlyStopping:
     patience: int
@@ -153,3 +157,52 @@ def init_csv_logger(csv_path: str):
             "val_loss", "val_mse", "val_psnr", "val_ssim",
         ])
     return f, writer
+
+
+@dataclass
+class EvalResult:
+    loss: float
+    mse: float
+    psnr: float
+    ssim: float
+
+
+def get_vq_reg_loss(model: nn.Module) -> torch.Tensor:
+    """
+    Returns VQ regularization loss stored inside the model (if any).
+    Supports:
+      - model.vq_loss (scalar tensor)
+      - model.vq_losses (list/tuple of scalar tensors or dict of scalar tensors)
+    If nothing exists, returns 0 on the correct device.
+    """
+    device = next(model.parameters()).device
+
+    if hasattr(model, "vq_loss") and getattr(model, "vq_loss") is not None:
+        v = getattr(model, "vq_loss")
+        if torch.is_tensor(v):
+            return v.to(device)
+        return torch.tensor(float(v), device=device)
+
+    if hasattr(model, "vq_losses") and getattr(model, "vq_losses") is not None:
+        v = getattr(model, "vq_losses")
+        if isinstance(v, dict):
+            vals = list(v.values())
+        else:
+            vals = list(v)
+
+        if len(vals) == 0:
+            return torch.zeros((), device=device)
+
+        out = torch.zeros((), device=device)
+        for t in vals:
+            out = out + (t.to(device) if torch.is_tensor(t) else torch.tensor(float(t), device=device))
+        return out
+
+    return torch.zeros((), device=device)
+
+
+def make_metrics(device: torch.device):
+    mse = MeanSquaredError().to(device)
+    psnr = PeakSignalNoiseRatio(data_range=1.0).to(device)
+    ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
+    return mse, psnr, ssim
