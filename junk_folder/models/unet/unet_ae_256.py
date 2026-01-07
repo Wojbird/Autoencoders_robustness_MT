@@ -40,22 +40,22 @@ class UNetAE256(nn.Module):
 
         # Decoder
         self.up1 = nn.ConvTranspose2d(latent_dim, 192, kernel_size=2, stride=2)
-        self.dec1 = UNetBlock(192 + 192, 192, use_dropout=True) # 192×14×14
+        self.dec1 = UNetBlock(192, 192, use_dropout=True) # 192×14×14
 
         self.up2 = nn.ConvTranspose2d(192, 128, kernel_size=2, stride=2)
-        self.dec2 = UNetBlock(128 + 128, 128, use_dropout=True) # 128×28×28
+        self.dec2 = UNetBlock(128, 128, use_dropout=True) # 128×28×28
 
         self.up3 = nn.ConvTranspose2d(128, 96, kernel_size=2, stride=2)
-        self.dec3 = UNetBlock(96 + 96, 96, use_dropout=True)    # 96×56×56
+        self.dec3 = UNetBlock(96, 96, use_dropout=True)    # 96×56×56
 
         self.up4 = nn.ConvTranspose2d(96, 64, kernel_size=2, stride=2)
-        self.dec4 = UNetBlock(64 + 64, 64)  # 64×112×112
+        self.dec4 = UNetBlock(64, 64)  # 64×112×112
 
         self.up5 = nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2)
-        self.dec5 = UNetBlock(32 + 32, 32)  # 32×224×224
+        self.dec5 = UNetBlock(32, 32)  # 32×224×224
 
         self.final = nn.Conv2d(32, image_channels, kernel_size=1)   # 3×224×224
-        self.activation = nn.Sigmoid()
+        self.activation = nn.Tanh()
 
     def encode(self, x):
         e1 = self.enc1(x)
@@ -64,27 +64,14 @@ class UNetAE256(nn.Module):
         e4 = self.enc4(self.pool(e3))
         e5 = self.enc5(self.pool(e4))
         z = self.bottleneck(self.pool(e5))
-        self._skips = [e1, e2, e3, e4, e5]
         return z
 
     def decode(self, z):
-        e1, e2, e3, e4, e5 = self._skips
-
         d1 = self.up1(z)
-        d1 = self.dec1(torch.cat([d1, e5], dim=1))
-
         d2 = self.up2(d1)
-        d2 = self.dec2(torch.cat([d2, e4], dim=1))
-
         d3 = self.up3(d2)
-        d3 = self.dec3(torch.cat([d3, e3], dim=1))
-
         d4 = self.up4(d3)
-        d4 = self.dec4(torch.cat([d4, e2], dim=1))
-
         d5 = self.up5(d4)
-        d5 = self.dec5(torch.cat([d5, e1], dim=1))
-
         out = self.activation(self.final(d5))
         return out
 

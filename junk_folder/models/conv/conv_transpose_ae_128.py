@@ -56,30 +56,30 @@ class ConvTransposeAE128(nn.Module):
             nn.LeakyReLU(0.1, inplace=True)
         )
         self.dec2 = nn.Sequential(
-            nn.ConvTranspose2d(120 + 120, 112, kernel_size=3, stride=2, padding=1, output_padding=1),  # 112x28x28
+            nn.ConvTranspose2d(120, 112, kernel_size=3, stride=2, padding=1, output_padding=1),  # 112x28x28
             nn.BatchNorm2d(112),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
         )
         self.dec3 = nn.Sequential(
-            nn.ConvTranspose2d(112 + 112, 96, kernel_size=3, stride=2, padding=1, output_padding=1),  # 96x56x56
+            nn.ConvTranspose2d(112, 96, kernel_size=3, stride=2, padding=1, output_padding=1),  # 96x56x56
             nn.BatchNorm2d(96),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
         )
         self.dec4 = nn.Sequential(
-            nn.ConvTranspose2d(96 + 96, 80, kernel_size=3, stride=2, padding=1, output_padding=1),  # 80x112x112
+            nn.ConvTranspose2d(96, 80, kernel_size=3, stride=2, padding=1, output_padding=1),  # 80x112x112
             nn.BatchNorm2d(80),
             nn.LeakyReLU(0.1, inplace=True)
         )
         self.dec5 = nn.Sequential(
-            nn.ConvTranspose2d(80 + 80, 64, kernel_size=3, stride=2, padding=1, output_padding=1),  # 64x224x224
+            nn.ConvTranspose2d(80, 64, kernel_size=3, stride=2, padding=1, output_padding=1),  # 64x224x224
             nn.BatchNorm2d(64),
             nn.LeakyReLU(0.1, inplace=True)
         )
 
         self.final = nn.Conv2d(64, image_channels, kernel_size=3, padding=1)    # 3x224x224
-        self.activation = nn.Sigmoid()
+        self.activation = nn.Tanh()
 
     def forward(self, x):
         x_latent = self.encode(x)
@@ -92,16 +92,14 @@ class ConvTransposeAE128(nn.Module):
         x3 = self.enc3(x2)
         x4 = self.enc4(x3)
         x5 = self.enc5(x4)
-        self._skips = [x1, x2, x3, x4]
         return x5
 
     def decode(self, z):
-        x1, x2, x3, x4 = self._skips
         d1 = self.dec1(z)
-        d2 = self.dec2(torch.cat([d1, x4], dim=1))
-        d3 = self.dec3(torch.cat([d2, x3], dim=1))
-        d4 = self.dec4(torch.cat([d3, x2], dim=1))
-        d5 = self.dec5(torch.cat([d4, x1], dim=1))
+        d2 = self.dec2(d1)
+        d3 = self.dec3(d2)
+        d4 = self.dec4(d3)
+        d5 = self.dec5(d4)
         return self.activation(self.final(d5))
 
 

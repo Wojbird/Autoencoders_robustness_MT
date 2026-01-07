@@ -79,32 +79,32 @@ class ResidualAutoencoderAE256(nn.Module):
             ResBlock(224)
         )
         self.dec2 = nn.Sequential(
-            nn.ConvTranspose2d(224 + 224, 192, kernel_size=3, stride=2, padding=1, output_padding=1),   # 192x28x28
+            nn.ConvTranspose2d(224, 192, kernel_size=3, stride=2, padding=1, output_padding=1),   # 192x28x28
             nn.BatchNorm2d(192),
             nn.LeakyReLU(0.1, inplace=True),
             ResBlock(192)
         )
         self.dec3 = nn.Sequential(
-            nn.ConvTranspose2d(192 + 192, 128, kernel_size=3, stride=2, padding=1, output_padding=1),   # 128x56x56
+            nn.ConvTranspose2d(192, 128, kernel_size=3, stride=2, padding=1, output_padding=1),   # 128x56x56
             nn.BatchNorm2d(128),
             nn.LeakyReLU(0.1, inplace=True),
             ResBlock(128)
         )
         self.dec4 = nn.Sequential(
-            nn.ConvTranspose2d(128 + 128, 96, kernel_size=3, stride=2, padding=1, output_padding=1),    # 96x112x112
+            nn.ConvTranspose2d(128, 96, kernel_size=3, stride=2, padding=1, output_padding=1),    # 96x112x112
             nn.BatchNorm2d(96),
             nn.LeakyReLU(0.1, inplace=True),
             ResBlock(96)
         )
         self.dec5 = nn.Sequential(
-            nn.ConvTranspose2d(96 + 96, 64, kernel_size=3, stride=2, padding=1, output_padding=1),  # 64x224x224
+            nn.ConvTranspose2d(96, 64, kernel_size=3, stride=2, padding=1, output_padding=1),  # 64x224x224
             nn.BatchNorm2d(64),
             nn.LeakyReLU(0.1, inplace=True),
             ResBlock(64)
         )
 
         self.final = nn.Conv2d(64, image_channels, kernel_size=3, padding=1)    # 3x224x224
-        self.activation = nn.Sigmoid()
+        self.activation = nn.Tanh()
 
     def forward(self, x):
         z = self.encode(x)
@@ -117,16 +117,14 @@ class ResidualAutoencoderAE256(nn.Module):
         x3 = self.enc3(x2)
         x4 = self.enc4(x3)
         x5 = self.enc5(x4)
-        self._skips = [x1, x2, x3, x4]
         return x5
 
     def decode(self, z):
-        x1, x2, x3, x4 = self._skips
         d1 = self.dec1(z)
-        d2 = self.dec2(torch.cat([d1, x4], dim=1))
-        d3 = self.dec3(torch.cat([d2, x3], dim=1))
-        d4 = self.dec4(torch.cat([d3, x2], dim=1))
-        d5 = self.dec5(torch.cat([d4, x1], dim=1))
+        d2 = self.dec2(d1)
+        d3 = self.dec3(d2)
+        d4 = self.dec4(d3)
+        d5 = self.dec5(d4)
         return self.activation(self.final(d5))
 
 model_class = ResidualAutoencoderAE256

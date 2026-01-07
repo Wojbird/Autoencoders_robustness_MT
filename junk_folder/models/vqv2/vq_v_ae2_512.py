@@ -114,7 +114,7 @@ class VQVAE2512(nn.Module):
         )
         self.final = nn.Sequential(
             nn.Conv2d(64, image_channels, kernel_size=3, padding=1),    # 3x224x224
-            nn.Sigmoid()
+            nn.Tanh()
         )
 
     def encode(self, x):
