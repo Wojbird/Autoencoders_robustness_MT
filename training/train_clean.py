@@ -57,10 +57,13 @@ def train_clean_model(
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
 
-    results_dir = make_results_dir(model_name, dataset_type, "clean")
+    results_dir = os.path.join("results", model_name, dataset_type, "clean")
     os.makedirs(results_dir, exist_ok=True)
 
-    ckpt_path = os.path.join(results_dir, f"{model_name}_clean_best.pt")
+    ckpt_dir = os.path.join("checkpoints", model_name, dataset_type, "clean")
+    os.makedirs(ckpt_dir, exist_ok=True)
+
+    ckpt_path = os.path.join(ckpt_dir, f"{model_name}_clean_best.pt")
     csv_path = os.path.join(results_dir, "metrics_per_epoch.csv")
     csv_f, csv_writer = init_csv_logger(csv_path)
 
@@ -138,6 +141,9 @@ def train_clean_model(
                 )
 
             plot_metrics(metrics_hist, results_dir)
+
+            images_dir = os.path.join(results_dir, "images")
+            os.makedirs(images_dir, exist_ok=True)
 
             save_images(
                 model=model,

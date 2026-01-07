@@ -57,8 +57,11 @@ def train_noisy_model(
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
 
-    results_dir = make_results_dir(model_name, dataset_type, "noisy")
+    results_dir = os.path.join("results", model_name, dataset_type, "noisy")
     os.makedirs(results_dir, exist_ok=True)
+
+    ckpt_dir = os.path.join("checkpoints", model_name, dataset_type, "noisy")
+    os.makedirs(ckpt_dir, exist_ok=True)
 
     ckpt_path = os.path.join(results_dir, f"{model_name}_noisy_best.pt")
     csv_path = os.path.join(results_dir, "metrics_per_epoch.csv")
@@ -138,6 +141,9 @@ def train_noisy_model(
                 )
 
             plot_metrics(metrics_hist, results_dir)
+
+            images_dir = os.path.join(results_dir, "images")
+            os.makedirs(images_dir, exist_ok=True)
 
             save_images(
                 model=model,
