@@ -1,0 +1,14 @@
+{
+  "name": "conv_transpose_ae_test",
+  "image_size": 224,
+  "image_channels": 3,
+  "latent_dim": 64,
+  "batch_size": 32,
+  "num_workers": 8,
+  "epochs": 100,
+  "learning_rate": 0.0001,
+  "weight_decay": 0.0001,
+  "noise_std": 0.1,
+  "val_subset_fraction": 0.001,
+  "early_stopping_patience": 10
+}
