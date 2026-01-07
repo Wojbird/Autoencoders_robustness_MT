@@ -26,7 +26,7 @@ class AdversarialUNetAETest(nn.Module):
         super().__init__()
         image_channels = config["image_channels"]
         latent_dim = config["latent_dim"]
-        assert latent_dim == 784, "This model is designed for latent_dim=64"
+        assert latent_dim == 784, "This model is designed for latent_dim=784"
 
         self.pool = nn.MaxPool2d(2)
 

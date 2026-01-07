@@ -2,7 +2,7 @@
   "name": "conv_transpose_ae_test",
   "image_size": 224,
   "image_channels": 3,
-  "latent_dim": 64,
+  "latent_dim": 784,
   "batch_size": 32,
   "num_workers": 8,
   "epochs": 100,
