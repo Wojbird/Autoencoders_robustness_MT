@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 import argparse
 import importlib
 import sys
+import logging
 from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
@@ -169,6 +170,13 @@ def run(mode, model_path: Path, input_type, dataset_type, log):
 
 def main():
     args = parse_args()
+
+    logging.basicConfig(
+        level=logging.INFO if args.log else logging.WARNING,
+        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
     set_seed(42)
     setup_device()
 
