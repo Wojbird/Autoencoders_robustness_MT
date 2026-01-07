@@ -38,16 +38,18 @@ def train_noisy_latent_model(
     device = get_device()
     try:
         model = model_class(cfg).to(device)
-    except TypeError:
-        # Backward compatibility: models without config in __init__
-        model = model_class().to(device)
+    except TypeError as e:
+        raise TypeError(
+            f"{model_class.__name__} must accept config dict in __init__(self, config). "
+            f"Original error: {e}"
+        )
 
     if not (hasattr(model, "encode") and hasattr(model, "decode")):
         raise AttributeError("Latent-noise training requires model.encode() and model.decode().")
 
     # Guardrail: explicitly reject VQ models
-    if hasattr(model, "vq_loss") or hasattr(model, "vq_losses"):
-        raise ValueError("train_noisy_latent_model() does not support VQ models (vq_loss/vq_losses detected).")
+    if hasattr(model, "get_vq_losses"):
+        raise ValueError("train_noisy_latent_model() does not support VQ models (get_vq_losses detected).")
 
     if dataset_type == "full":
         train_set, val_set = get_imagenet_datasets(image_size=image_size)
@@ -63,7 +65,6 @@ def train_noisy_latent_model(
                             num_workers=num_workers, pin_memory=True)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
-    loss_fn = nn.MSELoss()
 
     results_dir = os.path.join("results", model_name, dataset_type, "noisy_latent")
     os.makedirs(results_dir, exist_ok=True)
@@ -71,7 +72,7 @@ def train_noisy_latent_model(
     ckpt_dir = os.path.join("checkpoints", model_name, dataset_type, "noisy_latent")
     os.makedirs(ckpt_dir, exist_ok=True)
 
-    ckpt_path = os.path.join(results_dir, f"{model_name}_noisy_latent_best.pt")
+    ckpt_path = os.path.join(ckpt_dir, f"{model_name}_noisy_latent_best.pt")
     csv_path = os.path.join(results_dir, "metrics_per_epoch.csv")
     csv_f, csv_writer = init_csv_logger(csv_path)
 
@@ -96,11 +97,18 @@ def train_noisy_latent_model(
                 optimizer.zero_grad(set_to_none=True)
 
                 z = model.encode(x)
-                z_noisy = z + (noise_std * torch.randn_like(z) if noise_std > 0 else 0.0)
+                if z.dim() != 2:
+                    raise ValueError(
+                        f"Expected z as (B, latent_dim) for vector bottleneck, got shape={tuple(z.shape)}."
+                    )
+                if noise_std > 0:
+                    z_noisy = z + noise_std * torch.randn_like(z)
+                else:
+                    z_noisy = z
                 x_hat = model.decode(z_noisy)
                 x_hat = torch.clamp(x_hat, 0.0, 1.0)
 
-                loss = loss_fn(x_hat, x)
+                loss = compute_training_loss(model, x_hat, x, allow_vq=False)
                 loss.backward()
                 optimizer.step()
 
@@ -156,7 +164,7 @@ def train_noisy_latent_model(
                 model=model,
                 dataloader=val_loader,
                 device=device,
-                save_path=os.path.join(results_dir, f"recon_epoch_{epoch:04d}.png"),
+                save_path=os.path.join(images_dir, f"recon_epoch_{epoch:04d}.png"),
                 num_images=8,
                 add_noise=False,
                 latent_noise=True,  # <- latent noise

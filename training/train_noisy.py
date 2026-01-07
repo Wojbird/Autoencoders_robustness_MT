@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 from data.data_setter import get_subnet_datasets, get_imagenet_datasets
 from evaluation.evaluate import evaluate_reconstruction, compute_training_loss
-from utils.helpers import get_device, save_images, plot_metrics, load_config, ensure_val_fraction, make_results_dir, init_csv_logger, EarlyStopping
+from utils.helpers import get_device, save_images, plot_metrics, load_config, ensure_val_fraction, init_csv_logger, EarlyStopping
 
 
 def train_noisy_model(
@@ -38,9 +38,11 @@ def train_noisy_model(
     device = get_device()
     try:
         model = model_class(cfg).to(device)
-    except TypeError:
-        # Backward compatibility: models without config in __init__
-        model = model_class().to(device)
+    except TypeError as e:
+        raise TypeError(
+            f"{model_class.__name__} must accept config dict in __init__(self, config). "
+            f"Original error: {e}"
+        )
 
     if dataset_type == "full":
         train_set, val_set = get_imagenet_datasets(image_size=image_size)
@@ -63,7 +65,7 @@ def train_noisy_model(
     ckpt_dir = os.path.join("checkpoints", model_name, dataset_type, "noisy")
     os.makedirs(ckpt_dir, exist_ok=True)
 
-    ckpt_path = os.path.join(results_dir, f"{model_name}_noisy_best.pt")
+    ckpt_path = os.path.join(ckpt_dir, f"{model_name}_noisy_best.pt")
     csv_path = os.path.join(results_dir, "metrics_per_epoch.csv")
     csv_f, csv_writer = init_csv_logger(csv_path)
 
@@ -75,7 +77,6 @@ def train_noisy_model(
 
     es = EarlyStopping(patience=patience, min_delta=0.0)
     best_val = float("inf")
-    loss_fn = nn.MSELoss()
 
     try:
         for epoch in range(1, epochs + 1):
@@ -89,6 +90,8 @@ def train_noisy_model(
 
                 optimizer.zero_grad(set_to_none=True)
                 x_hat = model(x_in)
+                if isinstance(x_hat, (tuple, list)):
+                    x_hat = x_hat[0]
                 x_hat = torch.clamp(x_hat, 0.0, 1.0)
 
                 loss = compute_training_loss(model, x_hat, x, allow_vq=True)
@@ -149,7 +152,7 @@ def train_noisy_model(
                 model=model,
                 dataloader=val_loader,
                 device=device,
-                save_path=os.path.join(results_dir, f"recon_epoch_{epoch:04d}.png"),
+                save_path=os.path.join(images_dir, f"recon_epoch_{epoch:04d}.png"),
                 num_images=8,
                 add_noise=True,  # <- noisy input
                 latent_noise=False,

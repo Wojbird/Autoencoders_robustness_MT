@@ -1,25 +1,61 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
-class ConvTransposeAETest(nn.Module):
+
+class VectorQuantizer(nn.Module):
+    def __init__(self, num_embeddings, embedding_dim, commitment_cost=0.25):
+        super().__init__()
+        self.embedding_dim = embedding_dim
+        self.num_embeddings = num_embeddings
+        self.commitment_cost = commitment_cost
+
+        self.embeddings = nn.Embedding(num_embeddings, embedding_dim)
+        self.embeddings.weight.data.uniform_(-1 / num_embeddings, 1 / num_embeddings)
+
+    def forward(self, z):
+        z_perm = z.permute(0, 2, 3, 1).contiguous()
+        flat_z = z_perm.view(-1, self.embedding_dim)
+
+        distances = (
+            flat_z.pow(2).sum(1, keepdim=True)
+            - 2 * flat_z @ self.embeddings.weight.t()
+            + self.embeddings.weight.pow(2).sum(1)
+        )
+
+        encoding_indices = torch.argmin(distances, dim=1).unsqueeze(1)
+        encodings = torch.zeros(encoding_indices.size(0), self.num_embeddings, device=z.device)
+        encodings.scatter_(1, encoding_indices, 1)
+
+        quantized = encodings @ self.embeddings.weight
+        quantized = quantized.view(z_perm.shape)
+
+        commitment_loss = self.commitment_cost * F.mse_loss(quantized.detach(), z_perm)
+        codebook_loss = F.mse_loss(quantized, z_perm.detach())
+        loss = commitment_loss + codebook_loss
+
+        quantized = z_perm + (quantized - z_perm).detach()
+        return quantized.permute(0, 3, 1, 2).contiguous(), loss
+
+
+class VQVAETest(nn.Module):
     def __init__(self, config: dict):
         super().__init__()
         image_channels = config["image_channels"]
-        latent_dim = config["latent_dim"]
-        assert latent_dim == 784, "This model is designed for latent_dim=64"
+        embedding_dim = config["embedding_dim"]
+        assert embedding_dim == 64, "This model is designed for embedding_dim=64"
 
-        # Pre-encoder: 3 → 8 → 16
+        num_embeddings = config.get("num_embeddings", 256)
+
         self.pre_encoder = nn.Sequential(
             nn.Conv2d(image_channels, 8, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(8),
             nn.LeakyReLU(0.1, inplace=True),
-
             nn.Conv2d(8, 16, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(16),
             nn.LeakyReLU(0.1, inplace=True),
         )
 
-        # Encoder
         self.enc1 = nn.Sequential(
             nn.Conv2d(16, 24, kernel_size=3, stride=2, padding=1),  # 112x112
             nn.BatchNorm2d(24),
@@ -50,11 +86,8 @@ class ConvTransposeAETest(nn.Module):
             nn.Dropout2d(0.1)
         )
 
-        flat_dim = 64 * 7 * 7
-        self.fc_enc = nn.Linear(flat_dim, latent_dim)
-        self.fc_dec = nn.Linear(latent_dim, flat_dim)
+        self.quantizer = VectorQuantizer(num_embeddings=num_embeddings, embedding_dim=latent_dim)
 
-        # Decoder
         self.dec1 = nn.Sequential(
             nn.ConvTranspose2d(64, 56, kernel_size=3, stride=2, padding=1, output_padding=1),  # 14x14
             nn.BatchNorm2d(56),
@@ -85,32 +118,33 @@ class ConvTransposeAETest(nn.Module):
         self.activation = nn.Sigmoid()
 
     def encode(self, x):
-        x0 = self.pre_encoder(x)  # 224x224
-        x1 = self.enc1(x0)  # 112x112
-        x2 = self.enc2(x1)  # 56x56
-        x3 = self.enc3(x2)  # 28x28
-        x4 = self.enc4(x3)  # 14x14
-        z_map = self.enc5(x4)  # 7x7
+        x = self.pre_encoder(x)
+        x = self.enc1(x)
+        x = self.enc2(x)
+        x = self.enc3(x)
+        x = self.enc4(x)
+        z_e = self.enc5(x)
+        z_q, self.vq_loss = self.quantizer(z_e)
+        return z_q
 
-        b = z_map.size(0)
-        z_vec = self.fc_enc(z_map.flatten(1))  # (B, latent_dim)
-        return z_vec
-
-    def decode(self, z_vec):
-        b = z_vec.size(0)
-        z_map = self.fc_dec(z_vec).view(b, 64, 7, 7)
-
-        d1 = self.dec1(z_map)  # 14x14
-        d2 = self.dec2(d1)  # 28x28
-        d3 = self.dec3(d2)  # 56x56
-        d4 = self.dec4(d3)  # 112x112
-        d5 = self.dec5(d4)  # 224x224
-        return self.activation(self.final(d5))
+    def decode(self, z):
+        z = self.dec1(z)
+        z = self.dec2(z)
+        z = self.dec3(z)
+        z = self.dec4(z)
+        z = self.dec5(z)
+        return self.activation(self.final(z))
 
     def forward(self, x):
         z = self.encode(x)
         return self.decode(z)
 
+    def get_vq_losses(self):
+        result = {}
+        if hasattr(self, "vq_loss"):
+            result["vq_loss"] = self.vq_loss.item()
+        return result
+
 # Required by main.py
-model_class = ConvTransposeAETest
-config_path = "configs/test/conv_transpose_ae_test.json"
+model_class = VQVAETest
+config_path = "configs/test/vq_v_ae_test.json"

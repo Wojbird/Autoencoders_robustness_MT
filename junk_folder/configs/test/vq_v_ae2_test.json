@@ -13,9 +13,9 @@
   "val_subset_fraction": 0.001,
   "early_stopping_patience": 10,
   "num_embeddings": 256,
-  "top_latent_dim": 64,
-  "bottom_latent_dim": 48,
-  "top_num_embeddings": 64,
-  "bottom_num_embeddings": 128,
+  "top_latent_dim": 16,
+  "bottom_latent_dim": 32,
+  "top_num_embeddings": 256,
+  "bottom_num_embeddings": 512,
   "commitment_cost": 0.25
 }

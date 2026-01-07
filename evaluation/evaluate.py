@@ -44,14 +44,22 @@ def evaluate_reconstruction(
             if not (hasattr(model, "encode") and hasattr(model, "decode")):
                 raise AttributeError("Model must implement encode() and decode() for latent noise evaluation.")
             z = model.encode(x)
-            z_noisy = z + (noise_std * torch.randn_like(z) if noise_std > 0 else 0.0)
+            if z.dim() != 2:
+                raise ValueError(
+                    f"Expected vector latent z with shape (B, latent_dim), got shape={tuple(z.shape)}"
+                )
+            z_noisy = z + noise_std * torch.randn_like(z) if noise_std > 0 else z
             x_hat = model.decode(z_noisy)
+            if isinstance(x_hat, (tuple, list)):
+                x_hat = x_hat[0]
         else:
             if variant == "noisy" and noise_std > 0:
                 x_in = torch.clamp(x + noise_std * torch.randn_like(x), 0.0, 1.0)
             else:
                 x_in = x
             x_hat = model(x_in)
+            if isinstance(x_hat, (tuple, list)):
+                x_hat = x_hat[0]
 
         x_hat = torch.clamp(x_hat, 0.0, 1.0)
 

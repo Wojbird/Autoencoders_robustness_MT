@@ -38,9 +38,11 @@ def train_clean_model(
     device = get_device()
     try:
         model = model_class(cfg).to(device)
-    except TypeError:
-        # Backward compatibility: models without config in __init__
-        model = model_class().to(device)
+    except TypeError as e:
+        raise TypeError(
+            f"{model_class.__name__} must accept config dict in __init__(self, config). "
+            f"Original error: {e}"
+        )
 
     if dataset_type == "full":
         train_set, val_set = get_imagenet_datasets(image_size=image_size)
@@ -88,6 +90,8 @@ def train_clean_model(
 
                 optimizer.zero_grad(set_to_none=True)
                 x_hat = model(x)
+                if isinstance(x_hat, (tuple, list)):
+                    x_hat = x_hat[0]
                 x_hat = torch.clamp(x_hat, 0.0, 1.0)
 
                 loss = compute_training_loss(model, x_hat, x, allow_vq=True)
