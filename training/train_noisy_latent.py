@@ -3,6 +3,8 @@ import os
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+import logging
+logger = logging.getLogger(__name__)
 
 from data.data_setter import get_subnet_datasets, get_imagenet_datasets
 from evaluation.evaluate import evaluate_reconstruction, compute_training_loss
@@ -128,6 +130,15 @@ def train_noisy_latent_model(
                 val_eval.loss, val_eval.mse, val_eval.psnr, val_eval.ssim,
             ])
             csv_f.flush()
+
+            if log:
+                logger.info(
+                    f"[{variant}] Epoch {epoch}/{epochs} | "
+                    f"train_loss={train_loss:.6f} | "
+                    f"val_loss={val_eval.loss:.6f} | "
+                    f"PSNR={val_eval.psnr:.2f} | "
+                    f"SSIM={val_eval.ssim:.4f}"
+                )
 
             save_images(
                 model=model,
