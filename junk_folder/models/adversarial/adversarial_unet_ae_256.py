@@ -57,7 +57,7 @@ class AdversarialUNetAE256(nn.Module):
         self.dec5 = UNetBlock(32, 32)  # 32×224×224
 
         self.final = nn.Conv2d(32, image_channels, kernel_size=1)   # 3×224×224
-        self.activation = nn.Tanh()
+        self.activation = nn.Sigmoid()
 
     def encode(self, x):
         e1 = self.enc1(x)

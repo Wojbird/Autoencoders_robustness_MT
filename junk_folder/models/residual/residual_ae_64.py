@@ -107,7 +107,7 @@ class ResidualAE64(nn.Module):
         )
 
         self.final = nn.Conv2d(16, image_channels, kernel_size=3, padding=1)
-        self.activation = nn.Tanh()
+        self.activation = nn.Sigmoid()
 
     def forward(self, x):
         z = self.encode(x)

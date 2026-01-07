@@ -78,7 +78,7 @@ class ConvTransposeAE64(nn.Module):
         )
 
         self.final = nn.Conv2d(16, image_channels, kernel_size=3, padding=1)
-        self.activation = nn.Tanh()
+        self.activation = nn.Sigmoid()
 
     def encode(self, x):
         x0 = self.pre_encoder(x)  # 224x224
