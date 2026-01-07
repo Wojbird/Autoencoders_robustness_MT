@@ -141,7 +141,11 @@ def run(mode, model_path: Path, input_type, dataset_type, log):
             )
 
         device = get_device()
-        model = model_class().to(device)
+        try:
+            model = model_class(cfg).to(device)
+        except TypeError:
+            # Backward compatibility: models without config in __init__
+            model = model_class().to(device)
 
         state = torch.load(ckpt_path, map_location=device)
         model.load_state_dict(state)

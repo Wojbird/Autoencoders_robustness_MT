@@ -36,7 +36,11 @@ def train_noisy_latent_model(
     patience = int(cfg.get("early_stopping_patience", 10))
 
     device = get_device()
-    model = model_class().to(device)
+    try:
+        model = model_class(cfg).to(device)
+    except TypeError:
+        # Backward compatibility: models without config in __init__
+        model = model_class().to(device)
 
     if not (hasattr(model, "encode") and hasattr(model, "decode")):
         raise AttributeError("Latent-noise training requires model.encode() and model.decode().")

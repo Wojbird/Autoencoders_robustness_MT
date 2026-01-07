@@ -36,7 +36,11 @@ def train_clean_model(
     patience = int(cfg.get("early_stopping_patience", 10))
 
     device = get_device()
-    model = model_class().to(device)
+    try:
+        model = model_class(cfg).to(device)
+    except TypeError:
+        # Backward compatibility: models without config in __init__
+        model = model_class().to(device)
 
     if dataset_type == "full":
         train_set, val_set = get_imagenet_datasets(image_size=image_size)

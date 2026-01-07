@@ -39,7 +39,7 @@ class VectorQuantizer(nn.Module):
 
 
 class VQVAETest(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config: dict):
         super().__init__()
         C = config["image_channels"]
         self.top_dim = config["top_latent_dim"]

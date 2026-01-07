@@ -22,7 +22,7 @@ class UNetBlock(nn.Module):
 class AdversarialUNetAE128(nn.Module):
     discriminator_class = None
 
-    def __init__(self, config):
+    def __init__(self, config: dict):
         super().__init__()
         image_channels = config["image_channels"]
         latent_dim = config["latent_dim"]
