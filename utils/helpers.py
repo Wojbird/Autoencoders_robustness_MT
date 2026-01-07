@@ -1,9 +1,14 @@
 import os
+import json
 import random
 import torch
+import csv
 import numpy as np
+from typing import Dict
 import matplotlib.pyplot as plt
+from dataclasses import dataclass
 from torchvision.utils import make_grid
+from torch.utils.data import random_split
 
 
 def set_seed(seed: int):
@@ -101,3 +106,50 @@ def save_images(model, dataloader, device, save_path,
     plt.imshow(grid.permute(1, 2, 0))
     plt.savefig(save_path, bbox_inches="tight")
     plt.close()
+
+@dataclass
+class EarlyStopping:
+    patience: int
+    min_delta: float = 0.0
+
+    best: float = float("inf")
+    bad_epochs: int = 0
+
+    def step(self, value: float) -> bool:
+        if value < self.best - self.min_delta:
+            self.best = value
+            self.bad_epochs = 0
+            return False
+        self.bad_epochs += 1
+        return self.bad_epochs >= self.patience
+
+
+def load_config(config_path: str) -> Dict:
+    with open(config_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def ensure_val_fraction(val_set, fraction: float):
+    if fraction >= 1.0:
+        return val_set
+    n = len(val_set)
+    k = max(1, int(n * fraction))
+    subset, _ = random_split(val_set, [k, n - k])
+    return subset
+
+
+def make_results_dir(model_name: str, dataset_type: str, variant: str) -> str:
+    return os.path.join("results", model_name, dataset_type, variant)
+
+
+def init_csv_logger(csv_path: str):
+    new_file = not os.path.exists(csv_path)
+    f = open(csv_path, "a", newline="", encoding="utf-8")
+    writer = csv.writer(f)
+    if new_file:
+        writer.writerow([
+            "epoch",
+            "train_loss", "train_mse", "train_psnr", "train_ssim",
+            "val_loss", "val_mse", "val_psnr", "val_ssim",
+        ])
+    return f, writer

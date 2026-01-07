@@ -1,63 +1,12 @@
 import os
-import json
-import csv
-from dataclasses import dataclass
-from typing import Dict
 
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 
 from data.data_setter import get_subnet_datasets, get_imagenet_datasets
-from evaluation.evaluate import evaluate_reconstruction
-from utils.helpers import get_device, save_images, plot_metrics
-
-
-@dataclass
-class EarlyStopping:
-    patience: int
-    min_delta: float = 0.0
-    best: float = float("inf")
-    bad_epochs: int = 0
-
-    def step(self, value: float) -> bool:
-        if value < self.best - self.min_delta:
-            self.best = value
-            self.bad_epochs = 0
-            return False
-        self.bad_epochs += 1
-        return self.bad_epochs >= self.patience
-
-
-def _load_config(config_path: str) -> Dict:
-    with open(config_path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def _ensure_val_fraction(val_set, fraction: float):
-    if fraction >= 1.0:
-        return val_set
-    n = len(val_set)
-    k = max(1, int(n * fraction))
-    subset, _ = random_split(val_set, [k, n - k])
-    return subset
-
-
-def _make_results_dir(model_name: str, dataset_type: str, variant: str) -> str:
-    return os.path.join("results", model_name, dataset_type, variant)
-
-
-def _init_csv_logger(csv_path: str):
-    new_file = not os.path.exists(csv_path)
-    f = open(csv_path, "a", newline="", encoding="utf-8")
-    writer = csv.writer(f)
-    if new_file:
-        writer.writerow([
-            "epoch",
-            "train_loss", "train_mse", "train_psnr", "train_ssim",
-            "val_loss", "val_mse", "val_psnr", "val_ssim",
-        ])
-    return f, writer
+from evaluation.evaluate import evaluate_reconstruction, compute_training_loss
+from utils.helpers import get_device, save_images, plot_metrics, load_config, ensure_val_fraction, make_results_dir, init_csv_logger, EarlyStopping
 
 
 def train_noisy_latent_model(
@@ -71,7 +20,7 @@ def train_noisy_latent_model(
     Latent-noise training: x -> encode -> add noise in z -> decode -> x_hat, target x.
     IMPORTANT: This trainer does NOT support VQ models by design.
     """
-    cfg = _load_config(config_path)
+    cfg = load_config(config_path)
 
     model_name = cfg["name"]
     image_size = int(cfg["image_size"])
@@ -102,10 +51,9 @@ def train_noisy_latent_model(
         train_set, val_set = get_imagenet_datasets(image_size=image_size)
     elif dataset_type == "subset":
         train_set, val_set = get_subnet_datasets(image_size=image_size, val_split=0.1)
+        val_set = ensure_val_fraction(val_set, val_fraction)
     else:
         raise ValueError("dataset_type must be 'subset' or 'full'.")
-
-    val_set = _ensure_val_fraction(val_set, val_fraction)
 
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True,
                               num_workers=num_workers, pin_memory=True)
@@ -115,12 +63,12 @@ def train_noisy_latent_model(
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
     loss_fn = nn.MSELoss()
 
-    results_dir = _make_results_dir(model_name, dataset_type, "noisy_latent")
+    results_dir = make_results_dir(model_name, dataset_type, "noisy_latent")
     os.makedirs(results_dir, exist_ok=True)
 
     ckpt_path = os.path.join(results_dir, f"{model_name}_noisy_latent_best.pt")
     csv_path = os.path.join(results_dir, "metrics_per_epoch.csv")
-    csv_f, csv_writer = _init_csv_logger(csv_path)
+    csv_f, csv_writer = init_csv_logger(csv_path)
 
     metrics_hist = {
         "mse_train": [], "psnr_train": [], "ssim_train": [],
