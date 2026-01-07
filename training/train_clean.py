@@ -149,7 +149,7 @@ def train_clean_model(
                 model=model,
                 dataloader=val_loader,
                 device=device,
-                save_path=os.path.join(results_dir, f"recon_epoch_{epoch:04d}.png"),
+                save_path=os.path.join(images_dir, f"recon_epoch_{epoch:04d}.png"),
                 num_images=8,
                 add_noise=False,
                 latent_noise=False,
