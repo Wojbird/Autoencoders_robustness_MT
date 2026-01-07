@@ -43,10 +43,6 @@ def train_noisy_latent_model(
     if hasattr(model, "vq_loss") or hasattr(model, "vq_losses"):
         raise ValueError("train_noisy_latent_model() does not support VQ models (vq_loss/vq_losses detected).")
 
-    pretrained = cfg.get("pretrained_path", None)
-    if pretrained:
-        model.load_state_dict(torch.load(pretrained, map_location=device))
-
     if dataset_type == "full":
         train_set, val_set = get_imagenet_datasets(image_size=image_size)
     elif dataset_type == "subset":
@@ -133,16 +129,14 @@ def train_noisy_latent_model(
             ])
             csv_f.flush()
 
-            if epoch == 1 or epoch % 5 == 0:
-                # save_images adds noise on input; for latent-noise we want clean input preview
-                save_images(
-                    model=model,
-                    dataloader=val_loader,
-                    device=device,
-                    save_dir=results_dir,
-                    filename=f"recon_epoch_{epoch:04d}.png",
-                    noise_std=0.0
-                )
+            save_images(
+                model=model,
+                dataloader=val_loader,
+                device=device,
+                save_dir=results_dir,
+                filename=f"recon_epoch_{epoch:04d}.png",
+                noise_std=0.0
+            )
 
             if val_eval.loss < best_val:
                 best_val = val_eval.loss

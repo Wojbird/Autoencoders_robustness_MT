@@ -6,6 +6,7 @@ import csv
 import numpy as np
 from typing import Dict
 import matplotlib.pyplot as plt
+import torch.nn as nn
 
 from dataclasses import dataclass
 from torchvision.utils import make_grid

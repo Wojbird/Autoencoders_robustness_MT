@@ -36,11 +36,6 @@ def train_clean_model(
     device = get_device()
     model = model_class().to(device)
 
-    # Optional preload
-    pretrained = cfg.get("pretrained_path", None)
-    if pretrained:
-        model.load_state_dict(torch.load(pretrained, map_location=device))
-
     if dataset_type == "full":
         train_set, val_set = get_imagenet_datasets(image_size=image_size)
     elif dataset_type == "subset":
@@ -128,15 +123,16 @@ def train_clean_model(
             csv_f.flush()
 
             # Save example reconstructions each epoch
-            if epoch == 1 or epoch % 5 == 0:
-                save_images(
-                    model=model,
-                    dataloader=val_loader,
-                    device=device,
-                    save_dir=results_dir,
-                    filename=f"recon_epoch_{epoch:04d}.png",
-                    noise_std=0.0
-                )
+            save_images(
+                model=model,
+                dataloader=val_loader,
+                device=device,
+                save_path=os.path.join(results_dir, f"recon_epoch_{epoch:04d}.png"),
+                num_images=8,
+                add_noise=False,
+                latent_noise=False,
+                noise_std=0.0
+            )
 
             # Best checkpoint on primary metric: val_loss (MSE)
             if val_eval.loss < best_val:
