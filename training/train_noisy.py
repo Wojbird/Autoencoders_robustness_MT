@@ -139,8 +139,8 @@ def train_noisy_model(
                 device=device,
                 save_path=os.path.join(results_dir, f"recon_epoch_{epoch:04d}.png"),
                 num_images=8,
-                add_noise=False,
-                latent_noise=True,  # <- noise in latent
+                add_noise=True,  # <- noisy input
+                latent_noise=False,
                 noise_std=noise_std
             )
 

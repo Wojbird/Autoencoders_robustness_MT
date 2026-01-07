@@ -144,9 +144,11 @@ def train_noisy_latent_model(
                 model=model,
                 dataloader=val_loader,
                 device=device,
-                save_dir=results_dir,
-                filename=f"recon_epoch_{epoch:04d}.png",
-                noise_std=0.0
+                save_path=os.path.join(results_dir, f"recon_epoch_{epoch:04d}.png"),
+                num_images=8,
+                add_noise=False,
+                latent_noise=True,  # <- latent noise
+                noise_std=noise_std
             )
 
             if val_eval.loss < best_val:
