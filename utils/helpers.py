@@ -40,24 +40,48 @@ def save_metrics(metrics_dict, save_path):
                 f.write(f"{k}: {v:.6f}\n")
 
 
-def plot_metrics(metrics_dict, save_dir):
-    os.makedirs(save_dir, exist_ok=True)
+def plot_metrics(metrics_hist: dict, results_dir: str):
+    """
+    Saves one PNG per metric into results_dir.
+    Expected keys (lists of floats):
+      - loss_train, loss_val
+      - mse_train, mse_val
+      - psnr_train, psnr_val
+      - ssim_train, ssim_val
+    Missing keys are skipped gracefully.
+    """
+    os.makedirs(results_dir, exist_ok=True)
 
-    for metric in ["mse", "psnr", "ssim"]:
-        train_key = f"{metric}_train"
-        val_key = f"{metric}_val"
+    metric_specs = [
+        ("loss", "Loss (MSE-based)", "loss_train", "loss_val"),
+        ("mse",  "MSE",             "mse_train",  "mse_val"),
+        ("psnr", "PSNR",            "psnr_train", "psnr_val"),
+        ("ssim", "SSIM",            "ssim_train", "ssim_val"),
+    ]
 
-        if train_key in metrics_dict and val_key in metrics_dict:
-            plt.figure()
-            plt.plot(metrics_dict[train_key], label="Train")
-            plt.plot(metrics_dict[val_key], label="Validation")
-            plt.xlabel("Epoch")
-            plt.ylabel(metric.upper())
-            plt.title(f"{metric.upper()} over Epochs")
-            plt.legend()
-            plt.grid(True)
-            plt.savefig(os.path.join(save_dir, f"{metric}.png"))
-            plt.close()
+    for fname, title, k_train, k_val in metric_specs:
+        has_train = k_train in metrics_hist and len(metrics_hist[k_train]) > 0
+        has_val = k_val in metrics_hist and len(metrics_hist[k_val]) > 0
+
+        if not (has_train or has_val):
+            continue
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+
+        if has_train:
+            ax.plot(metrics_hist[k_train], label="train")
+        if has_val:
+            ax.plot(metrics_hist[k_val], label="val")
+
+        ax.set_title(title)
+        ax.set_xlabel("epoch")
+        ax.set_ylabel(fname)
+        ax.legend()
+
+        out_path = os.path.join(results_dir, f"{fname}.png")
+        fig.savefig(out_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
 
 
 def save_images(model, dataloader, device, save_path,

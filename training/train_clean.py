@@ -137,7 +137,8 @@ def train_clean_model(
                     f"SSIM={val_eval.ssim:.4f}"
                 )
 
-            # Save example reconstructions each epoch
+            plot_metrics(metrics_hist, results_dir)
+
             save_images(
                 model=model,
                 dataloader=val_loader,
@@ -157,9 +158,6 @@ def train_clean_model(
             # Early stopping
             if es.step(val_eval.loss):
                 break
-
-        # Plots
-        plot_metrics(metrics_hist, results_dir)
 
         # Plain text (human-readable, line by line)
         txt_path = os.path.join(results_dir, "metrics_per_epoch.txt")

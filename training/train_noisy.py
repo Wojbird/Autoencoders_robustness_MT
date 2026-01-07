@@ -137,6 +137,8 @@ def train_noisy_model(
                     f"SSIM={val_eval.ssim:.4f}"
                 )
 
+            plot_metrics(metrics_hist, results_dir)
+
             save_images(
                 model=model,
                 dataloader=val_loader,
@@ -154,8 +156,6 @@ def train_noisy_model(
 
             if es.step(val_eval.loss):
                 break
-
-        plot_metrics(metrics_hist, results_dir)
 
         txt_path = os.path.join(results_dir, "metrics_per_epoch.txt")
         with open(txt_path, "w", encoding="utf-8") as f:
