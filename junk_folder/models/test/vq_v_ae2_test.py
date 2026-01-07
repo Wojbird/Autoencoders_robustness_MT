@@ -115,7 +115,7 @@ class VQVAE2Test(nn.Module):
         )
 
         self.final = nn.Conv2d(16, image_channels, kernel_size=3, padding=1)
-        self.activation = nn.Tanh()
+        self.activation = nn.Sigmoid()
 
     def encode(self, x):
         x = self.pre_encoder(x)
