@@ -42,8 +42,8 @@ class VQVAETest(nn.Module):
     def __init__(self, config: dict):
         super().__init__()
         image_channels = config["image_channels"]
-        latent_dim = config["latent_dim"]
-        assert latent_dim == 64, "This model is designed for latent_dim=64"
+        embedding_dim = config["embedding_dim"]
+        assert embedding_dim == 64, "This model is designed for embedding_dim=64"
 
         num_embeddings = config.get("num_embeddings", 256)
 
@@ -86,7 +86,7 @@ class VQVAETest(nn.Module):
             nn.Dropout2d(0.1)
         )
 
-        self.quantizer = VectorQuantizer(num_embeddings=num_embeddings, embedding_dim=latent_dim)
+        self.quantizer = VectorQuantizer(num_embeddings=num_embeddings, embedding_dim=embedding_dim)
 
         self.dec1 = nn.Sequential(
             nn.ConvTranspose2d(64, 56, kernel_size=3, stride=2, padding=1, output_padding=1),  # 14x14

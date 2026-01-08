@@ -42,8 +42,9 @@ class VQVAE512(nn.Module):
     def __init__(self, config: dict):
         super().__init__()
         img_channels = config["image_channels"]
-        latent_dim = config["latent_dim"]
-        assert latent_dim == 512, "This model is designed for latent_dim=512"
+        embedding_dim = config["embedding_dim"]
+        assert embedding_dim == 128, "This model is designed for embedding_dim=128"
+
         num_embeddings = config.get("num_embeddings", 2048)
 
         # Pre-encoder
@@ -82,18 +83,18 @@ class VQVAE512(nn.Module):
             nn.Dropout2d(0.2)
         )
         self.enc5 = nn.Sequential(
-            nn.Conv2d(448, latent_dim, kernel_size=3, stride=2, padding=1),  # 512x7x7
-            nn.BatchNorm2d(latent_dim),
+            nn.Conv2d(448, 512, kernel_size=3, stride=2, padding=1),  # 512x7x7
+            nn.BatchNorm2d(512),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.2)
         )
 
         # Vector Quantization
-        self.quantizer = VectorQuantizer(num_embeddings=num_embeddings, embedding_dim=latent_dim)
+        self.quantizer = VectorQuantizer(num_embeddings=num_embeddings, embedding_dim=embedding_dim)
 
         # Decoder
         self.dec1 = nn.Sequential(
-            nn.ConvTranspose2d(latent_dim, 448, kernel_size=3, stride=2, padding=1, output_padding=1),  # 448x14x14
+            nn.ConvTranspose2d(512, 448, kernel_size=3, stride=2, padding=1, output_padding=1),  # 448x14x14
             nn.BatchNorm2d(448),
             nn.LeakyReLU(0.1, inplace=True),
         )

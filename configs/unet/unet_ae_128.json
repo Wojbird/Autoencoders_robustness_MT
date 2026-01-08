@@ -2,7 +2,7 @@
   "name": "unet_ae_128",
   "image_size": 224,
   "image_channels": 3,
-  "latent_dim": 1564,
+  "latent_dim": 1568,
   "batch_size": 32,
   "num_workers": 28,
   "epochs": 200,
