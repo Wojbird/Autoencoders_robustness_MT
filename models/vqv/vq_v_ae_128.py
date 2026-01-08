@@ -43,7 +43,7 @@ class VQVAE128(nn.Module):
         super().__init__()
         image_channels = config["image_channels"]
         embedding_dim = config["embedding_dim"]
-        assert embedding_dim == 32, "This model is designed for embedding_dim=32"
+        assert embedding_dim == 128, "This model is designed for embedding_dim=32"
 
         num_embeddings = config.get("num_embeddings", 512)
 
