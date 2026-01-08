@@ -38,10 +38,13 @@ class UNetAE512(nn.Module):
         self.enc5 = UNetBlock(384, 448, use_dropout=True)   # 448×14×14
 
         # Bottleneck
-        self.bottleneck = UNetBlock(448, latent_dim, use_dropout=True)  # 512×7×7
+        self.bottleneck = UNetBlock(448, 512, use_dropout=True)  # 512×7×7
+        flat_dim = 512 * 7 * 7  # 64*7*7=3136 for 224
+        self.fc_enc = nn.Linear(flat_dim, latent_dim)
+        self.fc_dec = nn.Linear(latent_dim, flat_dim)
 
         # Decoder
-        self.up1 = nn.ConvTranspose2d(latent_dim, 448, kernel_size=2, stride=2)
+        self.up1 = nn.ConvTranspose2d(512, 448, kernel_size=2, stride=2)
         self.dec1 = UNetBlock(448, 448, use_dropout=True) # 448×14×14
 
         self.up2 = nn.ConvTranspose2d(448, 384, kernel_size=2, stride=2)
@@ -72,7 +75,7 @@ class UNetAE512(nn.Module):
 
     def decode(self, z_vec):
         b = z_vec.size(0)
-        z_map = self.fc_dec(z_vec).view(b, 256, 7, 7)
+        z_map = self.fc_dec(z_vec).view(b, 512, 7, 7)
 
         d1 = self.up1(z_map)
         d1 = self.dec1(d1)

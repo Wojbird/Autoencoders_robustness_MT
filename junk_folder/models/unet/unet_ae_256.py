@@ -36,10 +36,13 @@ class UNetAE256(nn.Module):
         self.enc5 = UNetBlock(128, 192, use_dropout=True)   # 192×14×14
 
         # Bottleneck
-        self.bottleneck = UNetBlock(192, latent_dim, use_dropout=True)  # 256×7×7
+        self.bottleneck = UNetBlock(192, 256, use_dropout=True)  # 256×7×7
+        flat_dim = 256 * 7 * 7  # 64*7*7=3136 for 224
+        self.fc_enc = nn.Linear(flat_dim, latent_dim)
+        self.fc_dec = nn.Linear(latent_dim, flat_dim)
 
         # Decoder
-        self.up1 = nn.ConvTranspose2d(latent_dim, 192, kernel_size=2, stride=2)
+        self.up1 = nn.ConvTranspose2d(256, 192, kernel_size=2, stride=2)
         self.dec1 = UNetBlock(192, 192, use_dropout=True) # 192×14×14
 
         self.up2 = nn.ConvTranspose2d(192, 128, kernel_size=2, stride=2)

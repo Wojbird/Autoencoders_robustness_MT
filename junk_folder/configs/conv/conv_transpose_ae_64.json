@@ -12,6 +12,6 @@
   "betas_end":0.99,
   "noise_std": 0.05,
   "noise_latent": 0.005,
-  "val_subset_fraction": 0.001,
+  "val_subset_fraction": 1.0,
   "early_stopping_patience": 10
 }
