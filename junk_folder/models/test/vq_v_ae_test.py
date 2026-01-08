@@ -41,15 +41,14 @@ class VectorQuantizer(nn.Module):
 class VQVAETest(nn.Module):
     def __init__(self, config: dict):
         super().__init__()
-        C = config["image_channels"]
-        self.top_dim = config["top_latent_dim"]
-        self.bottom_dim = config["bottom_latent_dim"]
-        self.top_codebook_size = config["top_num_embeddings"]
-        self.bottom_codebook_size = config["bottom_num_embeddings"]
-        self.commitment_cost = config.get("commitment_cost", 0.25)
+        image_channels = config["image_channels"]
+        latent_dim = config["latent_dim"]
+        assert latent_dim == 64, "This model is designed for latent_dim=64"
+
+        num_embeddings = config.get("num_embeddings", 256)
 
         self.pre_encoder = nn.Sequential(
-            nn.Conv2d(C, 8, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(image_channels, 8, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(8),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Conv2d(8, 16, kernel_size=3, stride=1, padding=1),
@@ -57,99 +56,94 @@ class VQVAETest(nn.Module):
             nn.LeakyReLU(0.1, inplace=True),
         )
 
-        self.enc_b1 = nn.Sequential(
-            nn.Conv2d(16, 24, kernel_size=3, stride=2, padding=1),
+        self.enc1 = nn.Sequential(
+            nn.Conv2d(16, 24, kernel_size=3, stride=2, padding=1),  # 112x112
             nn.BatchNorm2d(24),
-            nn.LeakyReLU(0.1, inplace=True),
+            nn.LeakyReLU(0.1, inplace=True)
         )
-        self.enc_b2 = nn.Sequential(
-            nn.Conv2d(24, 32, kernel_size=3, stride=2, padding=1),
+        self.enc2 = nn.Sequential(
+            nn.Conv2d(24, 32, kernel_size=3, stride=2, padding=1),  # 56x56
             nn.BatchNorm2d(32),
             nn.LeakyReLU(0.1, inplace=True),
+            nn.Dropout2d(0.1)
         )
-        self.enc_b3 = nn.Sequential(
-            nn.Conv2d(32, self.bottom_dim, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(self.bottom_dim),
+        self.enc3 = nn.Sequential(
+            nn.Conv2d(32, 48, kernel_size=3, stride=2, padding=1),  # 28x28
+            nn.BatchNorm2d(48),
             nn.LeakyReLU(0.1, inplace=True),
+            nn.Dropout2d(0.1)
+        )
+        self.enc4 = nn.Sequential(
+            nn.Conv2d(48, 56, kernel_size=3, stride=2, padding=1),  # 14x14
+            nn.BatchNorm2d(56),
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.Dropout2d(0.1)
+        )
+        self.enc5 = nn.Sequential(
+            nn.Conv2d(56, 64, kernel_size=3, stride=2, padding=1),  # 7x7
+            nn.BatchNorm2d(64),
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.Dropout2d(0.1)
         )
 
-        self.enc_t1 = nn.Sequential(
-            nn.Conv2d(self.bottom_dim, 56, kernel_size=3, stride=2, padding=1),
+        self.quantizer = VectorQuantizer(num_embeddings=num_embeddings, embedding_dim=latent_dim)
+
+        self.dec1 = nn.Sequential(
+            nn.ConvTranspose2d(64, 56, kernel_size=3, stride=2, padding=1, output_padding=1),  # 14x14
             nn.BatchNorm2d(56),
             nn.LeakyReLU(0.1, inplace=True),
         )
-        self.enc_t2 = nn.Sequential(
-            nn.Conv2d(56, self.top_dim, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(self.top_dim),
-            nn.LeakyReLU(0.1, inplace=True),
-        )
-
-        self.vq_top = VectorQuantizer(self.top_codebook_size, self.top_dim, self.commitment_cost)
-        self.vq_bottom = VectorQuantizer(self.bottom_codebook_size, self.bottom_dim, self.commitment_cost)
-
-        self.upsample_top = nn.Sequential(
-            nn.ConvTranspose2d(self.top_dim, self.bottom_dim, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.BatchNorm2d(self.bottom_dim),
-            nn.LeakyReLU(0.1, inplace=True),
-        )
-
-        self.dec1 = nn.Sequential(
-            nn.ConvTranspose2d(self.bottom_dim * 2, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.BatchNorm2d(32),
-            nn.LeakyReLU(0.1, inplace=True),
-        )
         self.dec2 = nn.Sequential(
-            nn.ConvTranspose2d(32, 24, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.BatchNorm2d(24),
+            nn.ConvTranspose2d(56, 48, kernel_size=3, stride=2, padding=1, output_padding=1),  # 28x28
+            nn.BatchNorm2d(48),
             nn.LeakyReLU(0.1, inplace=True),
         )
         self.dec3 = nn.Sequential(
-            nn.ConvTranspose2d(24, 16, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.BatchNorm2d(16),
+            nn.ConvTranspose2d(48, 32, kernel_size=3, stride=2, padding=1, output_padding=1),  # 56x56
+            nn.BatchNorm2d(32),
             nn.LeakyReLU(0.1, inplace=True),
         )
-        self.final = nn.Sequential(
-            nn.Conv2d(16, C, kernel_size=3, padding=1),
-            nn.Sigmoid(),
+        self.dec4 = nn.Sequential(
+            nn.ConvTranspose2d(32, 24, kernel_size=3, stride=2, padding=1, output_padding=1),  # 112x112
+            nn.BatchNorm2d(24),
+            nn.LeakyReLU(0.1, inplace=True),
         )
+        self.dec5 = nn.Sequential(
+            nn.ConvTranspose2d(24, 16, kernel_size=3, stride=2, padding=1, output_padding=1),  # 224x224
+            nn.BatchNorm2d(16),
+            nn.LeakyReLU(0.1, inplace=True)
+        )
+
+        self.final = nn.Conv2d(16, image_channels, kernel_size=3, padding=1)
+        self.activation = nn.Sigmoid()
 
     def encode(self, x):
         x = self.pre_encoder(x)
-        z_b = self.enc_b1(x)
-        z_b = self.enc_b2(z_b)
-        z_b = self.enc_b3(z_b)
-        z_t = self.enc_t1(z_b)
-        z_t = self.enc_t2(z_t)
+        x = self.enc1(x)
+        x = self.enc2(x)
+        x = self.enc3(x)
+        x = self.enc4(x)
+        z_e = self.enc5(x)
+        z_q, self.vq_loss = self.quantizer(z_e)
+        return z_q
 
-        q_t, self.vq_loss_top = self.vq_top(z_t)
-        q_b, self.vq_loss_bottom = self.vq_bottom(z_b)
-
-        return q_t, q_b
-
-    def decode(self, q_t, q_b):
-        up_t = self.upsample_top(q_t)
-        z = torch.cat([up_t, q_b], dim=1)
+    def decode(self, z):
         z = self.dec1(z)
         z = self.dec2(z)
         z = self.dec3(z)
-        return self.final(z)
+        z = self.dec4(z)
+        z = self.dec5(z)
+        return self.activation(self.final(z))
 
     def forward(self, x):
-        q_t, q_b = self.encode(x)
-        x_recon = self.decode(q_t, q_b)
-        self.vq_loss = self.vq_loss_top + self.vq_loss_bottom
-        return x_recon
+        z = self.encode(x)
+        return self.decode(z)
 
     def get_vq_losses(self):
         result = {}
         if hasattr(self, "vq_loss"):
             result["vq_loss"] = self.vq_loss.item()
-        if hasattr(self, "vq_loss_top"):
-            result["top_vq_loss"] = self.vq_loss_top.item()
-        if hasattr(self, "vq_loss_bottom"):
-            result["bottom_vq_loss"] = self.vq_loss_bottom.item()
         return result
-
 
 # Required by main.py
 model_class = VQVAETest

@@ -26,7 +26,7 @@ class UNetAETest(nn.Module):
         super().__init__()
         image_channels = config["image_channels"]
         latent_dim = config["latent_dim"]
-        assert latent_dim == 784, "This model is designed for latent_dim=64"
+        assert latent_dim == 784, "This model is designed for latent_dim=784"
 
         self.pool = nn.MaxPool2d(2)
 
@@ -69,7 +69,6 @@ class UNetAETest(nn.Module):
         e5 = self.enc5(self.pool(e4))
         z_map = self.bottleneck(self.pool(e5))
 
-        b = z_map.size(0)
         z_vec = self.fc_enc(z_map.flatten(1))  # (B, latent_dim)
         return z_vec
 

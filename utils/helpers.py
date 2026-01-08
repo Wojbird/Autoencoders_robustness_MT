@@ -4,10 +4,11 @@ import random
 import torch
 import csv
 import numpy as np
-from typing import Dict
-import matplotlib.pyplot as plt
 import torch.nn as nn
+import matplotlib.pyplot as plt
 
+from typing import Dict
+from matplotlib.ticker import MaxNLocator
 from dataclasses import dataclass
 from torchvision.utils import make_grid
 from torch.utils.data import random_split
@@ -78,6 +79,9 @@ def plot_metrics(metrics_hist: dict, results_dir: str):
         ax.set_xlabel("epoch")
         ax.set_ylabel(fname)
         ax.legend()
+
+        # 🔽 KLUCZOWA POPRAWKA
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 
         out_path = os.path.join(results_dir, f"{fname}.png")
         fig.savefig(out_path, dpi=150, bbox_inches="tight")

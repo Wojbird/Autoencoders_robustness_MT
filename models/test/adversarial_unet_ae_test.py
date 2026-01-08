@@ -74,13 +74,11 @@ class AdversarialUNetAETest(nn.Module):
         e5 = self.enc5(self.pool(e4))
 
         z_map  = self.bottleneck(self.pool(e5))
-        b = z_map.size(0)
         z_vec = self.fc_enc(z_map.flatten(1))
         return z_vec
 
     def decode(self, z_vec):
         b = z_vec.size(0)
-
         z_map = self.fc_dec(z_vec).view(b, 64, 7, 7)
 
         d1 = self.up1(z_map)

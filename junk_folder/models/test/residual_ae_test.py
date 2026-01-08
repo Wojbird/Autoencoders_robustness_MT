@@ -23,7 +23,7 @@ class ResidualAETest(nn.Module):
         super().__init__()
         image_channels = config["image_channels"]
         latent_dim = config["latent_dim"]
-        assert latent_dim == 64, "This model is designed for latent_dim=64"
+        assert latent_dim == 784, "This model is designed for latent_dim=64"
 
         # Pre-encoder: 3 → 8 → 16
         self.pre_encoder = nn.Sequential(
@@ -64,16 +64,20 @@ class ResidualAETest(nn.Module):
             ResBlock(56)
         )
         self.enc5 = nn.Sequential(
-            nn.Conv2d(56, latent_dim, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(latent_dim),
+            nn.Conv2d(56, 64, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(64),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.1),
-            ResBlock(latent_dim)
+            ResBlock(64)
         )
+
+        flat_dim = 64 * 7 * 7  # 64*7*7=3136 for 224
+        self.fc_enc = nn.Linear(flat_dim, latent_dim)
+        self.fc_dec = nn.Linear(latent_dim, flat_dim)
 
         # Decoder blocks with skip connections
         self.dec1 = nn.Sequential(
-            nn.ConvTranspose2d(latent_dim, 56, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.ConvTranspose2d(64, 56, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.BatchNorm2d(56),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.1),
@@ -119,11 +123,16 @@ class ResidualAETest(nn.Module):
         x2 = self.enc2(x1)
         x3 = self.enc3(x2)
         x4 = self.enc4(x3)
-        x5 = self.enc5(x4)
-        return x5
+        z_map = self.enc5(x4)
 
-    def decode(self, z):
-        d1 = self.dec1(z)
+        z_vec = self.fc_enc(z_map.flatten(1))  # (B, latent_dim)
+        return z_vec
+
+    def decode(self, z_vec):
+        b = z_vec.size(0)
+        z_map = self.fc_dec(z_vec).view(b, 64, 7, 7)
+
+        d1 = self.dec1(z_map)
         d2 = self.dec2(d1)
         d3 = self.dec3(d2)
         d4 = self.dec4(d3)

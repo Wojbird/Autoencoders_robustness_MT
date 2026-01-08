@@ -2,7 +2,7 @@
   "name": "adversarial_unet_ae_128",
   "image_size": 224,
   "image_channels": 3,
-  "latent_dim": 128,
+  "latent_dim": 1564,
   "batch_size": 32,
   "num_workers": 28,
   "epochs": 200,
@@ -10,7 +10,8 @@
   "weight_decay": 0.00001,
   "betas_start": 0.9,
   "betas_end":0.99,
-  "noise_std": 0.1,
+  "noise_std": 0.05,
+  "noise_latent": 0.002,
   "val_subset_fraction": 1.0,
   "early_stopping_patience": 10
 }

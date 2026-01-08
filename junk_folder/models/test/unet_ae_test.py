@@ -26,7 +26,7 @@ class UNetAETest(nn.Module):
         super().__init__()
         image_channels = config["image_channels"]
         latent_dim = config["latent_dim"]
-        assert latent_dim == 64, "This model is designed for latent_dim=64"
+        assert latent_dim == 784, "This model is designed for latent_dim=784"
 
         self.pool = nn.MaxPool2d(2)
 
@@ -36,10 +36,14 @@ class UNetAETest(nn.Module):
         self.enc3 = UNetBlock(24, 32, use_dropout=True)
         self.enc4 = UNetBlock(32, 48, use_dropout=True)
         self.enc5 = UNetBlock(48, 56, use_dropout=True)
-        self.bottleneck = UNetBlock(56, latent_dim, use_dropout=True)
+        self.bottleneck = UNetBlock(56, 64, use_dropout=True)
+
+        flat_dim = 64 * 7 * 7  # 64*7*7=3136 for 224
+        self.fc_enc = nn.Linear(flat_dim, latent_dim)
+        self.fc_dec = nn.Linear(latent_dim, flat_dim)
 
         # Decoder: 5 levels
-        self.up1 = nn.ConvTranspose2d(latent_dim, 56, kernel_size=2, stride=2)
+        self.up1 = nn.ConvTranspose2d(64, 56, kernel_size=2, stride=2)
         self.dec1 = UNetBlock(56, 56, use_dropout=True)
 
         self.up2 = nn.ConvTranspose2d(56, 48, kernel_size=2, stride=2)
@@ -63,15 +67,29 @@ class UNetAETest(nn.Module):
         e3 = self.enc3(self.pool(e2))
         e4 = self.enc4(self.pool(e3))
         e5 = self.enc5(self.pool(e4))
-        z = self.bottleneck(self.pool(e5))
-        return z
+        z_map = self.bottleneck(self.pool(e5))
 
-    def decode(self, z):
-        d1 = self.up1(z)
+        z_vec = self.fc_enc(z_map.flatten(1))  # (B, latent_dim)
+        return z_vec
+
+    def decode(self, z_vec):
+        b = z_vec.size(0)
+        z_map = self.fc_dec(z_vec).view(b, 64, 7, 7)
+
+        d1 = self.up1(z_map)
+        d1 = self.dec1(d1)
+
         d2 = self.up2(d1)
+        d2 = self.dec2(d2)
+
         d3 = self.up3(d2)
+        d3 = self.dec3(d3)
+
         d4 = self.up4(d3)
+        d4 = self.dec4(d4)
+
         d5 = self.up5(d4)
+        d5 = self.dec5(d5)
         return self.activation(self.final(d5))
 
     def forward(self, x):

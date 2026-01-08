@@ -92,7 +92,6 @@ class ConvTransposeAETest(nn.Module):
         x4 = self.enc4(x3)  # 14x14
         z_map = self.enc5(x4)  # 7x7
 
-        b = z_map.size(0)
         z_vec = self.fc_enc(z_map.flatten(1))  # (B, latent_dim)
         return z_vec
 

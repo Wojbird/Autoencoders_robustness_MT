@@ -38,7 +38,7 @@ class VectorQuantizer(nn.Module):
         return quantized.permute(0, 3, 1, 2).contiguous(), loss
 
 
-class VQVAETest(nn.Module):
+class VQVAE64(nn.Module):
     def __init__(self, config: dict):
         super().__init__()
         image_channels = config["image_channels"]
@@ -56,7 +56,7 @@ class VQVAETest(nn.Module):
             nn.LeakyReLU(0.1, inplace=True),
         )
 
-        self.enc1 = nn.Sequential(
+        self.enc1 =nn.Sequential(
             nn.Conv2d(16, 24, kernel_size=3, stride=2, padding=1),  # 112x112
             nn.BatchNorm2d(24),
             nn.LeakyReLU(0.1, inplace=True)
@@ -80,8 +80,8 @@ class VQVAETest(nn.Module):
             nn.Dropout2d(0.1)
         )
         self.enc5 = nn.Sequential(
-            nn.Conv2d(56, 64, kernel_size=3, stride=2, padding=1),  # 7x7
-            nn.BatchNorm2d(64),
+            nn.Conv2d(56, latent_dim, kernel_size=3, stride=2, padding=1),  # 7x7
+            nn.BatchNorm2d(latent_dim),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout2d(0.1)
         )
@@ -89,27 +89,27 @@ class VQVAETest(nn.Module):
         self.quantizer = VectorQuantizer(num_embeddings=num_embeddings, embedding_dim=latent_dim)
 
         self.dec1 = nn.Sequential(
-            nn.ConvTranspose2d(64, 56, kernel_size=3, stride=2, padding=1, output_padding=1),  # 14x14
+            nn.ConvTranspose2d(latent_dim, 56, kernel_size=3, stride=2, padding=1, output_padding=1),  # 14x14
             nn.BatchNorm2d(56),
             nn.LeakyReLU(0.1, inplace=True),
         )
         self.dec2 = nn.Sequential(
-            nn.ConvTranspose2d(56, 48, kernel_size=3, stride=2, padding=1, output_padding=1),  # 28x28
+            nn.ConvTranspose2d(56 , 48, kernel_size=3, stride=2, padding=1, output_padding=1),  # 28x28
             nn.BatchNorm2d(48),
             nn.LeakyReLU(0.1, inplace=True),
         )
         self.dec3 = nn.Sequential(
-            nn.ConvTranspose2d(48, 32, kernel_size=3, stride=2, padding=1, output_padding=1),  # 56x56
+            nn.ConvTranspose2d(48 , 32, kernel_size=3, stride=2, padding=1, output_padding=1),  # 56x56
             nn.BatchNorm2d(32),
             nn.LeakyReLU(0.1, inplace=True),
         )
         self.dec4 = nn.Sequential(
-            nn.ConvTranspose2d(32, 24, kernel_size=3, stride=2, padding=1, output_padding=1),  # 112x112
+            nn.ConvTranspose2d(32 , 24, kernel_size=3, stride=2, padding=1, output_padding=1),  # 112x112
             nn.BatchNorm2d(24),
             nn.LeakyReLU(0.1, inplace=True),
         )
         self.dec5 = nn.Sequential(
-            nn.ConvTranspose2d(24, 16, kernel_size=3, stride=2, padding=1, output_padding=1),  # 224x224
+            nn.ConvTranspose2d(24 , 16, kernel_size=3, stride=2, padding=1, output_padding=1),  # 224x224
             nn.BatchNorm2d(16),
             nn.LeakyReLU(0.1, inplace=True)
         )
@@ -145,6 +145,7 @@ class VQVAETest(nn.Module):
             result["vq_loss"] = self.vq_loss.item()
         return result
 
+
 # Required by main.py
-model_class = VQVAETest
-config_path = "configs/test/vq_v_ae_test.json"
+model_class = VQVAE64
+config_path = "configs/vqv/vq_v_ae_64.json"
