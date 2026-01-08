@@ -31,7 +31,7 @@ def train_noisy_latent_model(
     epochs = int(cfg["epochs"])
     lr = float(cfg["learning_rate"])
     wd = float(cfg.get("weight_decay", 0.0))
-    noise_std = float(cfg.get("noise_std", 0.1))
+    noise_latent = float(cfg.get("noise_latent", 0.01))
     val_fraction = float(cfg.get("val_subset_fraction", 1.0))
     patience = int(cfg.get("early_stopping_patience", 10))
 
@@ -101,8 +101,8 @@ def train_noisy_latent_model(
                     raise ValueError(
                         f"Expected z as (B, latent_dim) for vector bottleneck, got shape={tuple(z.shape)}."
                     )
-                if noise_std > 0:
-                    z_noisy = z + noise_std * torch.randn_like(z)
+                if noise_latent > 0:
+                    z_noisy = z + noise_latent * torch.randn_like(z)
                 else:
                     z_noisy = z
                 x_hat = model.decode(z_noisy)
@@ -119,13 +119,13 @@ def train_noisy_latent_model(
 
             train_eval = evaluate_reconstruction(
                 model, train_loader, device,
-                variant="noisy_latent", noise_std=noise_std, latent_noise=True,
+                variant="noisy_latent", noise_std=noise_latent, latent_noise=True,
                 max_batches=20
             )
 
             val_eval = evaluate_reconstruction(
                 model, val_loader, device,
-                variant="noisy_latent", noise_std=noise_std, latent_noise=True
+                variant="noisy_latent", noise_std=noise_latent, latent_noise=True
             )
 
             metrics_hist["loss_train"].append(train_loss)
@@ -168,7 +168,7 @@ def train_noisy_latent_model(
                 num_images=8,
                 add_noise=False,
                 latent_noise=True,  # <- latent noise
-                noise_std=noise_std
+                noise_std=noise_latent
             )
 
             if val_eval.loss < best_val:

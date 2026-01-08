@@ -9,7 +9,7 @@
   "weight_decay": 0.00001,
   "betas_start": 0.9,
   "betas_end":0.99,
-  "noise_std": 0.1,
+  "noise_std": 0.05,
   "val_subset_fraction": 0.001,
   "early_stopping_patience": 5,
   "num_embeddings": 256,
