@@ -2,7 +2,7 @@
   "name": "vq_v_ae_256",
   "image_size": 224,
   "image_channels": 3,
-  "embedding_dim": 64,
+  "embedding_dim": 256,
   "batch_size": 32,
   "num_workers": 28,
   "epochs": 300,
