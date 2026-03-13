@@ -32,7 +32,8 @@ def parse_args():
                         help="Dataset source: subset or full")
     parser.add_argument("--log", action="store_true",
                         help="Enable detailed logging")
-
+    parser.add_argument("--gpu", type=int, default=None,
+                        help="CUDA GPU id to use, e.g. 0, 1, 2. If not provided, default CUDA device is used.")
     return parser.parse_args()
 
 
@@ -95,7 +96,7 @@ def import_model(module_path: Path):
     return model_class, config_path
 
 
-def run(mode, model_path: Path, input_type, dataset_type, log):
+def run(mode, model_path: Path, input_type, dataset_type, log, gpu_id=None):
     if input_type == "all":
         for variant in ["clean", "noisy", "noisy_latent"]:
             print(f"\n--- Running {mode} for input type: {variant} ---")
@@ -119,11 +120,29 @@ def run(mode, model_path: Path, input_type, dataset_type, log):
     trained_ckpt = None
     if mode in ("train", "train_test"):
         if input_type == "clean":
-            trained_ckpt = train_clean_model(model_class, config_path, dataset_type=dataset_type, log=log)
+            trained_ckpt = train_clean_model(
+                model_class,
+                config_path,
+                dataset_type=dataset_type,
+                log=log,
+                gpu_id=gpu_id,
+            )
         elif input_type == "noisy":
-            trained_ckpt = train_noisy_model(model_class, config_path, dataset_type=dataset_type, log=log)
+            trained_ckpt = train_noisy_model(
+                model_class,
+                config_path,
+                dataset_type=dataset_type,
+                log=log,
+                gpu_id=gpu_id,
+            )
         elif input_type == "noisy_latent":
-            trained_ckpt = train_noisy_latent_model(model_class, config_path, dataset_type=dataset_type, log=log)
+            trained_ckpt = train_noisy_latent_model(
+                model_class,
+                config_path,
+                dataset_type=dataset_type,
+                log=log,
+                gpu_id=gpu_id,
+            )
         else:
             raise ValueError(f"Unknown input type: {input_type}")
 
@@ -141,7 +160,7 @@ def run(mode, model_path: Path, input_type, dataset_type, log):
                 f"Run training first or verify your trainer saves the best checkpoint there."
             )
 
-        device = get_device()
+        device = get_device(gpu_id)
         try:
             model = model_class(cfg).to(device)
         except TypeError:
@@ -178,13 +197,13 @@ def main():
     )
 
     set_seed(42)
-    setup_device()
+    setup_device(args.gpu)
 
     model_paths = discover_models("models", args.model)
 
     for path in model_paths:
         print(f"\n>>> Running {args.mode} for model: {path}")
-        run(args.mode, path, args.type, args.input, args.log)
+        run(args.mode, path, args.type, args.input, args.log, gpu_id=args.gpu)
 
 
 if __name__ == "__main__":

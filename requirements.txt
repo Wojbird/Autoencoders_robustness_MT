@@ -17,3 +17,5 @@ scikit-learn>=1.2
 kaggle>=1.5
 
 tensorboard>=2.15
+torchvision
+torch

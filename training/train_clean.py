@@ -16,6 +16,7 @@ def train_clean_model(
     *,
     dataset_type: str = "subset",
     log: bool = False,
+    gpu_id: int | None = None,
 ) -> str:
     """
     Trains on clean inputs x -> x_hat.
@@ -35,7 +36,7 @@ def train_clean_model(
     val_fraction = float(cfg.get("val_subset_fraction", 1.0))
     patience = int(cfg.get("early_stopping_patience", 10))
 
-    device = get_device()
+    device = get_device(gpu_id)
     try:
         model = model_class(cfg).to(device)
     except TypeError as e:

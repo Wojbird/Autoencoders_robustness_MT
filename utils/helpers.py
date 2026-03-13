@@ -23,13 +23,24 @@ def set_seed(seed: int):
     torch.cuda.manual_seed_all(seed)
 
 
-def get_device():
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def get_device(gpu_id: int | None = None):
+    if torch.cuda.is_available():
+        if gpu_id is None:
+            return torch.device("cuda")
+        return torch.device(f"cuda:{gpu_id}")
+    return torch.device("cpu")
 
 
-def setup_device():
+def setup_device(gpu_id: int | None = None):
     torch.set_num_threads(4)
     torch.backends.cudnn.benchmark = True
+
+    if torch.cuda.is_available() and gpu_id is not None:
+        if gpu_id < 0 or gpu_id >= torch.cuda.device_count():
+            raise ValueError(
+                f"Invalid gpu_id={gpu_id}. Available GPU ids: 0..{torch.cuda.device_count() - 1}"
+            )
+        torch.cuda.set_device(gpu_id)
 
 
 def save_metrics(metrics_dict, save_path):

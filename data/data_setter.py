@@ -5,7 +5,24 @@ from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from torch.utils.data import random_split, Dataset
 
-full_root = "/raid/kszyc/datasets/ImageNet2012"
+
+def load_dataset_root(config_path="data/root.json") -> str:
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(
+            f"Dataset root config not found: {config_path}"
+        )
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    root = data.get("full_root", "").strip()
+    if not root:
+        raise ValueError(
+            f"Field 'full_root' is missing or empty in {config_path}"
+        )
+
+    return root
+
 
 class ImageNetKaggle(Dataset):
     def __init__(self, root, split, transform=None):
@@ -33,6 +50,7 @@ class ImageNetKaggle(Dataset):
                         sample_path = os.path.join(syn_folder, sample)
                         self.samples.append(sample_path)
                         self.targets.append(target)
+
         elif split == "val":
             for entry in sorted(os.listdir(samples_dir)):
                 syn_id = self.val_to_syn[entry]
@@ -50,16 +68,8 @@ class ImageNetKaggle(Dataset):
             x = self.transform(x)
         return x, self.targets[idx]
 
-def load_imagenet_root(path_file="imagenet_path.txt") -> str:
-    try:
-        with open(path_file, "r") as f:
-            return f.read().strip()
-    except FileNotFoundError:
-        raise RuntimeError(f"File '{path_file}' with ImageNet path not found.")
-
 
 def get_transforms(image_size):
-
     return transforms.Compose([
         transforms.Resize((image_size, image_size)),
         transforms.ToTensor(),
@@ -67,7 +77,6 @@ def get_transforms(image_size):
 
 
 def get_subnet_datasets(root_dir="datasets/subset_imagenet/", image_size=224, val_split=0.1):
-
     transform = get_transforms(image_size)
     dataset = ImageFolder(root_dir, transform=transform)
 
@@ -78,11 +87,13 @@ def get_subnet_datasets(root_dir="datasets/subset_imagenet/", image_size=224, va
     return train_set, val_set
 
 
-def get_imagenet_datasets(root_dir=full_root, image_size=224):
+def get_imagenet_datasets(root_dir=None, image_size=224):
+    if root_dir is None:
+        root_dir = load_dataset_root()
 
     transform = get_transforms(image_size)
 
-    train_set =  ImageNetKaggle(root_dir, "train", transform=transform)
-    val_set =  ImageNetKaggle(root_dir, "val", transform=transform)
+    train_set = ImageNetKaggle(root_dir, "train", transform=transform)
+    val_set = ImageNetKaggle(root_dir, "val", transform=transform)
 
     return train_set, val_set
