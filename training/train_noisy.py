@@ -1,7 +1,6 @@
 import os
 
 import torch
-import torch.nn as nn
 from torch.utils.data import DataLoader
 import logging
 logger = logging.getLogger(__name__)
@@ -35,6 +34,10 @@ def train_noisy_model(
     noise_std = float(cfg.get("noise_std", 0.1))
     val_fraction = float(cfg.get("val_subset_fraction", 1.0))
     patience = int(cfg.get("early_stopping_patience", 10))
+    scheduler_factor = float(cfg.get("scheduler_factor", 0.5))
+    scheduler_patience = int(cfg.get("scheduler_patience", 5))
+    scheduler_min_lr = float(cfg.get("scheduler_min_lr", 1e-6))
+    scheduler_threshold = float(cfg.get("scheduler_threshold", 1e-4))
 
     device = get_device(gpu_id)
     try:
@@ -59,6 +62,15 @@ def train_noisy_model(
                             num_workers=num_workers, pin_memory=True)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
+
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=scheduler_factor,
+        patience=scheduler_patience,
+        threshold=scheduler_threshold,
+        min_lr=scheduler_min_lr,
+    )
 
     results_dir = os.path.join("results", model_name, dataset_type, "noisy")
     os.makedirs(results_dir, exist_ok=True)
@@ -117,6 +129,9 @@ def train_noisy_model(
                 variant="noisy", noise_std=noise_std, latent_noise=False
             )
 
+            scheduler.step(val_eval.loss)
+            current_lr = optimizer.param_groups[0]["lr"]
+
             metrics_hist["loss_train"].append(train_loss)
             metrics_hist["loss_val"].append(val_eval.loss)
 
@@ -141,7 +156,8 @@ def train_noisy_model(
                     f"train_loss={train_loss:.6f} | "
                     f"val_loss={val_eval.loss:.6f} | "
                     f"PSNR={val_eval.psnr:.2f} | "
-                    f"SSIM={val_eval.ssim:.4f}"
+                    f"SSIM={val_eval.ssim:.4f} | "
+                    f"lr={current_lr:.6e}"
                 )
 
             plot_metrics(metrics_hist, results_dir)

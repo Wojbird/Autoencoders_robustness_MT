@@ -29,28 +29,28 @@ def _deconv_block(in_ch: int, out_ch: int) -> nn.Sequential:
     )
 
 
-class ConvTransposeAETest(nn.Module):
+class ConvTransposeAEBase(nn.Module):
     """
-    Test version of ConvTransposeAE:
-    - pure convolutional bottleneck
+    Pure convolutional transpose autoencoder:
     - no fc_enc / fc_dec
-    - latent is [B, latent_channels, 7, 7]
-    - lightweight but structurally consistent with the main ConvTransposeAE family
+    - latent is a feature map of shape [B, latent_channels, 7, 7]
+    - same encoder/decoder logic for all model sizes
     """
 
-    def __init__(self, config: dict):
+    def __init__(
+        self,
+        *,
+        image_channels: int,
+        ch1: int,
+        ch2: int,
+        ch3: int,
+        ch4: int,
+        latent_channels: int,
+        dropout: float = 0.2,
+    ) -> None:
         super().__init__()
 
-        image_channels = config["image_channels"]
-        latent_channels = int(config.get("latent_channels", 64))
-        dropout = float(config.get("dropout", 0.2))
-
-        # lekka, ale sensowna skala testowa
-        ch1 = 16
-        ch2 = 32
-        ch3 = 48
-        ch4 = 56
-
+        # 224x224
         self.pre_encoder = nn.Sequential(
             nn.Conv2d(image_channels, ch1, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(ch1),
@@ -58,17 +58,17 @@ class ConvTransposeAETest(nn.Module):
         )
 
         # 224 -> 112 -> 56 -> 28 -> 14 -> 7
-        self.enc1 = _conv_block(ch1, ch2, stride=2, dropout=0.0)         # 112x112
-        self.enc2 = _conv_block(ch2, ch3, stride=2, dropout=0.0)         # 56x56
-        self.enc3 = _conv_block(ch3, ch4, stride=2, dropout=0.0)         # 28x28
-        self.enc4 = _conv_block(ch4, ch4, stride=2, dropout=dropout)     # 14x14
+        self.enc1 = _conv_block(ch1, ch2, stride=2, dropout=0.0)       # 112x112
+        self.enc2 = _conv_block(ch2, ch3, stride=2, dropout=0.0)       # 56x56
+        self.enc3 = _conv_block(ch3, ch4, stride=2, dropout=0.0)       # 28x28
+        self.enc4 = _conv_block(ch4, ch4, stride=2, dropout=dropout)   # 14x14
         self.enc5 = _conv_block(ch4, latent_channels, stride=2, dropout=dropout)  # 7x7
 
         # 7 -> 14 -> 28 -> 56 -> 112 -> 224
-        self.dec1 = _deconv_block(latent_channels, ch4)   # 14x14
-        self.dec2 = _deconv_block(ch4, ch3)               # 28x28
-        self.dec3 = _deconv_block(ch3, ch2)               # 56x56
-        self.dec4 = _deconv_block(ch2, ch1)               # 112x112
+        self.dec1 = _deconv_block(latent_channels, ch4)  # 14x14
+        self.dec2 = _deconv_block(ch4, ch3)              # 28x28
+        self.dec3 = _deconv_block(ch3, ch2)              # 56x56
+        self.dec4 = _deconv_block(ch2, ch1)              # 112x112
         self.dec5 = nn.Sequential(
             nn.ConvTranspose2d(
                 ch1,
@@ -100,8 +100,3 @@ class ConvTransposeAETest(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.decode(self.encode(x))
-
-
-# Required by main.py
-model_class = ConvTransposeAETest
-config_path = "configs/test/conv_transpose_ae_test.json"

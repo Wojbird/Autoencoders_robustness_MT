@@ -1,14 +1,13 @@
 import os
 
 import torch
-import torch.nn as nn
 from torch.utils.data import DataLoader
 import logging
 logger = logging.getLogger(__name__)
 
 from data.data_setter import get_subnet_datasets, get_imagenet_datasets
 from evaluation.evaluate import evaluate_reconstruction, compute_training_loss
-from utils.helpers import get_device, save_images, plot_metrics, load_config, ensure_val_fraction, make_results_dir, init_csv_logger, EarlyStopping
+from utils.helpers import get_device, save_images, plot_metrics, load_config, ensure_val_fraction, init_csv_logger, EarlyStopping
 
 
 def train_noisy_latent_model(
@@ -35,6 +34,10 @@ def train_noisy_latent_model(
     noise_latent = float(cfg.get("noise_latent", 0.01))
     val_fraction = float(cfg.get("val_subset_fraction", 1.0))
     patience = int(cfg.get("early_stopping_patience", 10))
+    scheduler_factor = float(cfg.get("scheduler_factor", 0.5))
+    scheduler_patience = int(cfg.get("scheduler_patience", 5))
+    scheduler_min_lr = float(cfg.get("scheduler_min_lr", 1e-6))
+    scheduler_threshold = float(cfg.get("scheduler_threshold", 1e-4))
 
     device = get_device(gpu_id)
     try:
@@ -67,6 +70,15 @@ def train_noisy_latent_model(
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
 
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=scheduler_factor,
+        patience=scheduler_patience,
+        threshold=scheduler_threshold,
+        min_lr=scheduler_min_lr,
+    )
+
     results_dir = os.path.join("results", model_name, dataset_type, "noisy_latent")
     os.makedirs(results_dir, exist_ok=True)
 
@@ -98,10 +110,6 @@ def train_noisy_latent_model(
                 optimizer.zero_grad(set_to_none=True)
 
                 z = model.encode(x)
-                if z.dim() != 2:
-                    raise ValueError(
-                        f"Expected z as (B, latent_dim) for vector bottleneck, got shape={tuple(z.shape)}."
-                    )
                 if noise_latent > 0:
                     z_noisy = z + noise_latent * torch.randn_like(z)
                 else:
@@ -129,6 +137,9 @@ def train_noisy_latent_model(
                 variant="noisy_latent", noise_std=noise_latent, latent_noise=True
             )
 
+            scheduler.step(val_eval.loss)
+            current_lr = optimizer.param_groups[0]["lr"]
+
             metrics_hist["loss_train"].append(train_loss)
             metrics_hist["loss_val"].append(val_eval.loss)
 
@@ -153,7 +164,8 @@ def train_noisy_latent_model(
                     f"train_loss={train_loss:.6f} | "
                     f"val_loss={val_eval.loss:.6f} | "
                     f"PSNR={val_eval.psnr:.2f} | "
-                    f"SSIM={val_eval.ssim:.4f}"
+                    f"SSIM={val_eval.ssim:.4f} | "
+                    f"lr={current_lr:.6e}"
                 )
 
             plot_metrics(metrics_hist, results_dir)
