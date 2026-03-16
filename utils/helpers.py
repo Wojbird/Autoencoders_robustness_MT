@@ -173,12 +173,13 @@ def load_config(config_path: str) -> Dict:
         return json.load(f)
 
 
-def ensure_val_fraction(val_set, fraction: float):
+def ensure_val_fraction(val_set, fraction: float, split_seed: int = 42):
     if fraction >= 1.0:
         return val_set
     n = len(val_set)
     k = max(1, int(n * fraction))
-    subset, _ = random_split(val_set, [k, n - k])
+    generator = torch.Generator().manual_seed(split_seed)
+    subset, _ = random_split(val_set, [k, n - k], generator=generator)
     return subset
 
 

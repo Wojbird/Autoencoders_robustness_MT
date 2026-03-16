@@ -33,24 +33,21 @@ class ConvTransposeAEBase(nn.Module):
     """
     Pure convolutional transpose autoencoder:
     - no fc_enc / fc_dec
-    - latent is a feature map of shape [B, latent_channels, 7, 7]
-    - same encoder/decoder logic for all model sizes
+    - latent is a feature map [B, latent_channels, 7, 7]
+    - architecture is driven by config
     """
 
-    def __init__(
-        self,
-        *,
-        image_channels: int,
-        ch1: int,
-        ch2: int,
-        ch3: int,
-        ch4: int,
-        latent_channels: int,
-        dropout: float = 0.2,
-    ) -> None:
+    def __init__(self, config: dict) -> None:
         super().__init__()
 
-        # 224x224
+        image_channels = int(config["image_channels"])
+        ch1 = int(config["ch1"])
+        ch2 = int(config["ch2"])
+        ch3 = int(config["ch3"])
+        ch4 = int(config["ch4"])
+        latent_channels = int(config["latent_channels"])
+        dropout = float(config.get("dropout", 0.2))
+
         self.pre_encoder = nn.Sequential(
             nn.Conv2d(image_channels, ch1, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(ch1),
@@ -58,17 +55,17 @@ class ConvTransposeAEBase(nn.Module):
         )
 
         # 224 -> 112 -> 56 -> 28 -> 14 -> 7
-        self.enc1 = _conv_block(ch1, ch2, stride=2, dropout=0.0)       # 112x112
-        self.enc2 = _conv_block(ch2, ch3, stride=2, dropout=0.0)       # 56x56
-        self.enc3 = _conv_block(ch3, ch4, stride=2, dropout=0.0)       # 28x28
-        self.enc4 = _conv_block(ch4, ch4, stride=2, dropout=dropout)   # 14x14
-        self.enc5 = _conv_block(ch4, latent_channels, stride=2, dropout=dropout)  # 7x7
+        self.enc1 = _conv_block(ch1, ch2, stride=2, dropout=0.0)
+        self.enc2 = _conv_block(ch2, ch3, stride=2, dropout=0.0)
+        self.enc3 = _conv_block(ch3, ch4, stride=2, dropout=0.0)
+        self.enc4 = _conv_block(ch4, ch4, stride=2, dropout=dropout)
+        self.enc5 = _conv_block(ch4, latent_channels, stride=2, dropout=dropout)
 
         # 7 -> 14 -> 28 -> 56 -> 112 -> 224
-        self.dec1 = _deconv_block(latent_channels, ch4)  # 14x14
-        self.dec2 = _deconv_block(ch4, ch3)              # 28x28
-        self.dec3 = _deconv_block(ch3, ch2)              # 56x56
-        self.dec4 = _deconv_block(ch2, ch1)              # 112x112
+        self.dec1 = _deconv_block(latent_channels, ch4)
+        self.dec2 = _deconv_block(ch4, ch3)
+        self.dec3 = _deconv_block(ch3, ch2)
+        self.dec4 = _deconv_block(ch2, ch1)
         self.dec5 = nn.Sequential(
             nn.ConvTranspose2d(
                 ch1,

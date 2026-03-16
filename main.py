@@ -67,15 +67,18 @@ def build_val_loader(cfg: dict, dataset_type: str):
 def discover_models(base_dir: str, target: str) -> list:
     base = Path(base_dir)
 
-    if target == "all":
-        return [p for p in base.rglob("*.py")]
+    def is_real_model_file(p: Path) -> bool:
+        return p.name.endswith(".py") and not p.name.endswith("_base.py") and p.name != "__init__.py"
 
-    potential_file = list(base.rglob(f"{target}.py"))
+    if target == "all":
+        return [p for p in base.rglob("*.py") if is_real_model_file(p)]
+
+    potential_file = [p for p in base.rglob(f"{target}.py") if is_real_model_file(p)]
     if potential_file:
         return potential_file
 
     if (base / target).is_dir():
-        return list((base / target).glob("*.py"))
+        return [p for p in (base / target).glob("*.py") if is_real_model_file(p)]
 
     print(f"Error: Could not find model '{target}' in {base_dir}")
     sys.exit(1)
@@ -100,7 +103,7 @@ def run(mode, model_path: Path, input_type, dataset_type, log, gpu_id=None):
     if input_type == "all":
         for variant in ["clean", "noisy", "noisy_latent"]:
             print(f"\n--- Running {mode} for input type: {variant} ---")
-            run(mode, model_path, variant, dataset_type, log)
+            run(mode, model_path, variant, dataset_type, log, gpu_id=gpu_id)
         return
 
     model_class, config_path = import_model(model_path)
@@ -194,6 +197,7 @@ def main():
         level=logging.INFO if args.log else logging.WARNING,
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
         datefmt="%H:%M:%S",
+        force=True,
     )
 
     set_seed(42)

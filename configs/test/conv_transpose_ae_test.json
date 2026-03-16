@@ -2,7 +2,12 @@
   "name": "conv_transpose_ae_test",
   "image_size": 224,
   "image_channels": 3,
+  "ch1": 16,
+  "ch2": 32,
+  "ch3": 48,
+  "ch4": 56,
   "latent_channels": 64,
+  "dropout": 0.2,
   "batch_size": 32,
   "num_workers": 8,
   "epochs": 30,
@@ -15,5 +20,5 @@
   "scheduler_factor": 0.5,
   "scheduler_patience": 5,
   "scheduler_min_lr": 1e-6,
-  "scheduler_threshold": 1e-4,
+  "scheduler_threshold": 1e-4
 }
