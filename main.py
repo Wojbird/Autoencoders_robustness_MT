@@ -68,7 +68,11 @@ def discover_models(base_dir: str, target: str) -> list:
     base = Path(base_dir)
 
     def is_real_model_file(p: Path) -> bool:
-        return p.name.endswith(".py") and not p.name.endswith("_base.py") and p.name != "__init__.py"
+        return (
+            p.name.endswith(".py")
+            and not p.name.endswith("_base.py")
+            and p.name != "__init__.py"
+        )
 
     if target == "all":
         return [p for p in base.rglob("*.py") if is_real_model_file(p)]
@@ -103,7 +107,7 @@ def run(mode, model_path: Path, input_type, dataset_type, log, gpu_id=None):
     if input_type == "all":
         for variant in ["clean", "noisy", "noisy_latent"]:
             print(f"\n--- Running {mode} for input type: {variant} ---")
-            run(mode, model_path, variant, dataset_type, log, gpu_id=gpu_id)
+            run(mode, model_path, variant, dataset_type, log)
         return
 
     model_class, config_path = import_model(model_path)
