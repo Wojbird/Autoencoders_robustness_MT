@@ -107,7 +107,7 @@ def run(mode, model_path: Path, input_type, dataset_type, log, gpu_id=None):
     if input_type == "all":
         for variant in ["clean", "noisy", "noisy_latent"]:
             print(f"\n--- Running {mode} for input type: {variant} ---")
-            run(mode, model_path, variant, dataset_type, log)
+            run(mode, model_path, variant, dataset_type, log, gpu_id=gpu_id)
         return
 
     model_class, config_path = import_model(model_path)
