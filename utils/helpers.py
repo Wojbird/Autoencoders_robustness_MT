@@ -6,6 +6,9 @@ import csv
 import numpy as np
 import torch.nn as nn
 import matplotlib.pyplot as plt
+import time
+import shutil
+import tempfile
 
 from typing import Dict
 from matplotlib.ticker import MaxNLocator
@@ -247,3 +250,53 @@ def make_metrics(device: torch.device):
     psnr = PeakSignalNoiseRatio(data_range=1.0).to(device)
     ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
     return mse, psnr, ssim
+
+def safe_save_state_dict(state_dict, final_ckpt_path: str, retries: int = 3, delay: float = 2.0):
+    """
+    Saves checkpoint robustly:
+    - first to local scratch/tmp
+    - then copies to final .tmp path
+    - finally atomically replaces destination
+    """
+    final_dir = os.path.dirname(final_ckpt_path)
+    os.makedirs(final_dir, exist_ok=True)
+
+    scratch_dir = (
+        os.environ.get("SLURM_TMPDIR")
+        or os.environ.get("TMPDIR")
+        or tempfile.gettempdir()
+    )
+    os.makedirs(scratch_dir, exist_ok=True)
+
+    local_tmp_path = os.path.join(
+        scratch_dir,
+        os.path.basename(final_ckpt_path) + f".pid{os.getpid()}.tmp"
+    )
+    final_tmp_path = final_ckpt_path + ".tmp"
+
+    last_error = None
+
+    for attempt in range(1, retries + 1):
+        try:
+            torch.save(state_dict, local_tmp_path)
+            shutil.copy2(local_tmp_path, final_tmp_path)
+            os.replace(final_tmp_path, final_ckpt_path)
+
+            if os.path.exists(local_tmp_path):
+                os.remove(local_tmp_path)
+            return
+
+        except Exception as e:
+            last_error = e
+
+            for path in (local_tmp_path, final_tmp_path):
+                if os.path.exists(path):
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+
+            if attempt < retries:
+                time.sleep(delay)
+
+    raise last_error

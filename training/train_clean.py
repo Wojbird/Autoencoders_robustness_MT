@@ -7,7 +7,16 @@ logger = logging.getLogger(__name__)
 
 from data.data_setter import get_subnet_datasets, get_imagenet_datasets
 from evaluation.evaluate import evaluate_reconstruction, compute_training_loss
-from utils.helpers import get_device, save_images, plot_metrics, load_config, ensure_val_fraction, init_csv_logger, EarlyStopping
+from utils.helpers import (
+    get_device,
+    save_images,
+    plot_metrics,
+    load_config,
+    ensure_val_fraction,
+    init_csv_logger,
+    EarlyStopping,
+    safe_save_state_dict,
+)
 
 
 def train_clean_model(
@@ -181,7 +190,8 @@ def train_clean_model(
             # Best checkpoint on primary metric: val_loss (MSE)
             if val_eval.loss < best_val:
                 best_val = val_eval.loss
-                torch.save(model.state_dict(), ckpt_path)
+                state_dict_cpu = {k: v.detach().cpu() for k, v in model.state_dict().items()}
+                safe_save_state_dict(state_dict_cpu, ckpt_path)
 
             # Early stopping
             if es.step(val_eval.loss):
