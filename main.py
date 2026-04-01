@@ -141,7 +141,10 @@ def run(mode, model_path: Path, input_type, dataset_type, log, log_wandb, gpu_id
     cfg = load_config(config_path)
 
     model_name = str(cfg.get("name", model_path.stem))
-    noise_std = float(cfg.get("noise_std", 0.0))
+    if input_type == "noisy_latent":
+        noise_std = float(cfg.get("noise_latent", cfg.get("noise_std", 0.0)))
+    else:
+        noise_std = float(cfg.get("noise_std", 0.0))
 
     results_dir = os.path.join("results", model_name, dataset_type, input_type)
     os.makedirs(results_dir, exist_ok=True)

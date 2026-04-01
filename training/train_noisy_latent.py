@@ -40,7 +40,7 @@ def _forward_with_latent_noise(model, x, noise_std: float):
         x_hat = _unwrap_tensor(x_hat)
         return x_hat
 
-    if hasattr(model, "encoder") and hasattr(model, "decoder"):
+    if hasattr(model, "vq_loss") or hasattr(model, "vq_losses") or hasattr(model, "get_vq_losses"):
         z = model.encoder(x)
         z = _unwrap_tensor(z)
         z_noisy = z + torch.randn_like(z) * noise_std
@@ -79,7 +79,7 @@ def train_noisy_latent_model(
     epochs = int(cfg["epochs"])
     lr = float(cfg["learning_rate"])
     wd = float(cfg.get("weight_decay", 0.0))
-    noise_std = float(cfg.get("noise_std", 0.0))
+    noise_std = float(cfg.get("noise_latent", cfg.get("noise_std", 0.0)))
     val_fraction = float(cfg.get("val_subset_fraction", 1.0))
     patience = int(cfg.get("early_stopping_patience", 10))
     scheduler_factor = float(cfg.get("scheduler_factor", 0.5))
@@ -309,7 +309,7 @@ def train_noisy_latent_model(
                     wandb.run.summary["noise_std"] = noise_std
 
             if es.step(val_eval.loss):
-                if log and es.early_stop:
+                if log:
                     logger.info(f"Early stopping triggered at epoch {epoch}.")
                 break
 

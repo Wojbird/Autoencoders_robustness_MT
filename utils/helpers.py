@@ -102,6 +102,34 @@ def plot_metrics(metrics_hist: dict, results_dir: str):
         plt.close(fig)
 
 
+def _unwrap_tensor(x):
+    if isinstance(x, (tuple, list)):
+        return x[0]
+    return x
+
+
+def _forward_with_latent_noise(model, x, noise_std=0.0):
+    if hasattr(model, "encode") and callable(getattr(model, "encode")) and \
+       hasattr(model, "decode") and callable(getattr(model, "decode")):
+        z = model.encode(x)
+        z = _unwrap_tensor(z)
+        z_noisy = z + noise_std * torch.randn_like(z) if noise_std > 0 else z
+        out = model.decode(z_noisy)
+        return _unwrap_tensor(out)
+
+    if hasattr(model, "encoder") and hasattr(model, "decoder"):
+        z = model.encoder(x)
+        z = _unwrap_tensor(z)
+        z_noisy = z + noise_std * torch.randn_like(z) if noise_std > 0 else z
+        out = model.decoder(z_noisy)
+        return _unwrap_tensor(out)
+
+    raise AttributeError(
+        f"{model.__class__.__name__} must expose either encode()/decode() "
+        f"or encoder/decoder for latent-noise visualization."
+    )
+
+
 def save_images(model, dataloader, device, save_path,
                 num_images=8, add_noise=False, latent_noise=False, noise_std=0.1):
     model.eval()
@@ -119,14 +147,11 @@ def save_images(model, dataloader, device, save_path,
                 x = torch.clamp(x, 0., 1.)
 
             if latent_noise:
-                z = model.encode(x)
-                z = z + noise_std * torch.randn_like(z)
-                out = model.decode(z)
+                out_tensor = _forward_with_latent_noise(model, x, noise_std)
             else:
                 out = model(x)
+                out_tensor = _unwrap_tensor(out)
 
-            # Obsłuż typ tuple
-            out_tensor = out[0] if isinstance(out, (tuple, list)) else out
             out_tensor = out_tensor.clamp(0., 1.).cpu()
             x_vis = x_vis.cpu()
 
@@ -138,7 +163,6 @@ def save_images(model, dataloader, device, save_path,
             if images_shown >= num_images:
                 break
 
-    # Stwórz siatkę obrazów
     pairs = []
     for i in range(images_shown):
         pair = torch.stack([images_orig[i], images_recon[i]])

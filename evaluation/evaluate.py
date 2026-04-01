@@ -1,9 +1,37 @@
 import os
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional
 
 import torch
 import torch.nn as nn
 from utils.helpers import get_vq_reg_loss, make_metrics, EvalResult
+
+
+def _unwrap_tensor(x):
+    if isinstance(x, (tuple, list)):
+        return x[0]
+    return x
+
+
+def _forward_with_latent_noise(model: nn.Module, x: torch.Tensor, noise_std: float) -> torch.Tensor:
+    if hasattr(model, "encode") and callable(getattr(model, "encode")) and \
+       hasattr(model, "decode") and callable(getattr(model, "decode")):
+        z = model.encode(x)
+        z = _unwrap_tensor(z)
+        z_noisy = z + noise_std * torch.randn_like(z) if noise_std > 0 else z
+        x_hat = model.decode(z_noisy)
+        return _unwrap_tensor(x_hat)
+
+    if hasattr(model, "encoder") and hasattr(model, "decoder"):
+        z = model.encoder(x)
+        z = _unwrap_tensor(z)
+        z_noisy = z + noise_std * torch.randn_like(z) if noise_std > 0 else z
+        x_hat = model.decoder(z_noisy)
+        return _unwrap_tensor(x_hat)
+
+    raise AttributeError(
+        f"{model.__class__.__name__} must expose either encode()/decode() "
+        f"or encoder/decoder for latent-noise evaluation."
+    )
 
 
 @torch.no_grad()
@@ -17,15 +45,6 @@ def evaluate_reconstruction(
     latent_noise: bool = False,
     max_batches: Optional[int] = None,
 ) -> EvalResult:
-    """
-    Computes reconstruction loss (MSE) and image metrics (MSE/PSNR/SSIM).
-
-    variant:
-      - "clean": input x
-      - "noisy": input clamp(x + noise, 0, 1)
-      - "noisy_latent": latent path: encode -> add noise -> decode
-    latent_noise=True forces the encode/decode path (used for noisy_latent).
-    """
     model.eval()
     loss_fn = nn.MSELoss()
 
@@ -40,22 +59,16 @@ def evaluate_reconstruction(
 
         x = x.to(device)
 
-        if latent_noise:
-            if not (hasattr(model, "encode") and hasattr(model, "decode")):
-                raise AttributeError("Model must implement encode() and decode() for latent noise evaluation.")
-            z = model.encode(x)
-            z_noisy = z + noise_std * torch.randn_like(z) if noise_std > 0 else z
-            x_hat = model.decode(z_noisy)
-            if isinstance(x_hat, (tuple, list)):
-                x_hat = x_hat[0]
+        if latent_noise or variant == "noisy_latent":
+            x_hat = _forward_with_latent_noise(model, x, noise_std)
         else:
             if variant == "noisy" and noise_std > 0:
                 x_in = torch.clamp(x + noise_std * torch.randn_like(x), 0.0, 1.0)
             else:
                 x_in = x
+
             x_hat = model(x_in)
-            if isinstance(x_hat, (tuple, list)):
-                x_hat = x_hat[0]
+            x_hat = _unwrap_tensor(x_hat)
 
         x_hat = torch.clamp(x_hat, 0.0, 1.0)
 
@@ -85,9 +98,6 @@ def compute_training_loss(
     *,
     allow_vq: bool,
 ) -> torch.Tensor:
-    """
-    Reconstruction MSE + optional VQ regularization (if present in model).
-    """
     recon = nn.MSELoss()(x_hat, x_target)
     if not allow_vq:
         return recon
@@ -104,10 +114,6 @@ def evaluate_model(
     noise_std: float,
     results_dir: Optional[str] = None,
 ) -> Dict[str, float]:
-    """
-    Public evaluation entry (for main.py test mode).
-    Returns a flat dict with metrics.
-    """
     latent = (variant == "noisy_latent")
     res = evaluate_reconstruction(
         model,
@@ -125,7 +131,6 @@ def evaluate_model(
         "ssim": res.ssim,
     }
 
-    # Optional: save a plain text summary
     if results_dir is not None:
         os.makedirs(results_dir, exist_ok=True)
         summary_path = os.path.join(results_dir, "evaluation_summary.txt")

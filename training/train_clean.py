@@ -268,7 +268,7 @@ def train_clean_model(
 
             # Early stopping
             if es.step(val_eval.loss):
-                if log and es.early_stop:
+                if log:
                     logger.info(f"Early stopping triggered at epoch {epoch}.")
                 break
 
