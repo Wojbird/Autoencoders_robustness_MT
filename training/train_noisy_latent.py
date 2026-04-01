@@ -1,8 +1,9 @@
 import os
-
+import wandb
 import torch
 from torch.utils.data import DataLoader
 import logging
+
 logger = logging.getLogger(__name__)
 
 from data.data_setter import get_subnet_datasets, get_imagenet_datasets
@@ -19,6 +20,40 @@ from utils.helpers import (
 )
 
 
+def _unwrap_tensor(x):
+    if isinstance(x, (tuple, list)):
+        return x[0]
+    return x
+
+
+def _forward_with_latent_noise(model, x, noise_std: float):
+    """
+    Forward pass for classical autoencoders only:
+    x -> encode -> z -> z_noisy -> decode -> x_hat
+    """
+    if hasattr(model, "encode") and callable(getattr(model, "encode")) and \
+       hasattr(model, "decode") and callable(getattr(model, "decode")):
+        z = model.encode(x)
+        z = _unwrap_tensor(z)
+        z_noisy = z + torch.randn_like(z) * noise_std
+        x_hat = model.decode(z_noisy)
+        x_hat = _unwrap_tensor(x_hat)
+        return x_hat
+
+    if hasattr(model, "encoder") and hasattr(model, "decoder"):
+        z = model.encoder(x)
+        z = _unwrap_tensor(z)
+        z_noisy = z + torch.randn_like(z) * noise_std
+        x_hat = model.decoder(z_noisy)
+        x_hat = _unwrap_tensor(x_hat)
+        return x_hat
+
+    raise AttributeError(
+        f"{model.__class__.__name__} must expose either "
+        f"encode()/decode() or encoder/decoder for noisy_latent training."
+    )
+
+
 def train_noisy_latent_model(
     model_class,
     config_path: str,
@@ -26,10 +61,14 @@ def train_noisy_latent_model(
     dataset_type: str = "subset",
     log: bool = False,
     gpu_id: int | None = None,
+    log_wandb: bool = False,
 ) -> str:
     """
-    Latent-noise training: x -> encode -> add noise in z -> decode -> x_hat, target x.
-    IMPORTANT: This trainer does NOT support VQ models by design.
+    Trains with noise added in latent space:
+    x -> z -> z_noisy -> x_hat
+
+    Supports only classical autoencoders.
+    Does NOT support VQ-VAE / VQ-VAE2.
     """
     cfg = load_config(config_path)
 
@@ -40,7 +79,7 @@ def train_noisy_latent_model(
     epochs = int(cfg["epochs"])
     lr = float(cfg["learning_rate"])
     wd = float(cfg.get("weight_decay", 0.0))
-    noise_latent = float(cfg.get("noise_latent", 0.01))
+    noise_std = float(cfg.get("noise_std", 0.0))
     val_fraction = float(cfg.get("val_subset_fraction", 1.0))
     patience = int(cfg.get("early_stopping_patience", 10))
     scheduler_factor = float(cfg.get("scheduler_factor", 0.5))
@@ -57,12 +96,11 @@ def train_noisy_latent_model(
             f"Original error: {e}"
         )
 
-    if not (hasattr(model, "encode") and hasattr(model, "decode")):
-        raise AttributeError("Latent-noise training requires model.encode() and model.decode().")
-
-    # Guardrail: explicitly reject VQ models
-    if hasattr(model, "get_vq_losses"):
-        raise ValueError("train_noisy_latent_model() does not support VQ models (get_vq_losses detected).")
+    if hasattr(model, "vq_loss") or hasattr(model, "vq_losses"):
+        raise TypeError(
+            f"{model_class.__name__} appears to be a VQ-based model. "
+            f"train_noisy_latent_model supports only classical autoencoders."
+        )
 
     if dataset_type == "full":
         train_set, val_set = get_imagenet_datasets(image_size=image_size)
@@ -72,10 +110,20 @@ def train_noisy_latent_model(
     else:
         raise ValueError("dataset_type must be 'subset' or 'full'.")
 
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True,
-                              num_workers=num_workers, pin_memory=True)
-    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False,
-                            num_workers=num_workers, pin_memory=True)
+    train_loader = DataLoader(
+        train_set,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=True,
+    )
+    val_loader = DataLoader(
+        val_set,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True,
+    )
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
 
@@ -106,9 +154,26 @@ def train_noisy_latent_model(
 
     es = EarlyStopping(patience=patience, min_delta=0.0)
     best_val = float("inf")
+    best_epoch = 0
+
+    run = None
+    if log_wandb:
+        run = wandb.init(
+            project="autoencoders-robustness",
+            name=f"{model_name}_{dataset_type}_noisy_latent",
+            config={
+                **cfg,
+                "dataset_type": dataset_type,
+                "training_variant": "noisy_latent",
+                "model_class": model_class.__name__,
+                "gpu_id": gpu_id,
+                "noise_std": noise_std,
+            },
+        )
 
     try:
         for epoch in range(1, epochs + 1):
+            # ---- Train
             model.train()
             train_loss_sum = 0.0
             n_batches = 0
@@ -117,13 +182,7 @@ def train_noisy_latent_model(
                 x = x.to(device)
 
                 optimizer.zero_grad(set_to_none=True)
-
-                z = model.encode(x)
-                if noise_latent > 0:
-                    z_noisy = z + noise_latent * torch.randn_like(z)
-                else:
-                    z_noisy = z
-                x_hat = model.decode(z_noisy)
+                x_hat = _forward_with_latent_noise(model, x, noise_std)
                 x_hat = torch.clamp(x_hat, 0.0, 1.0)
 
                 loss = compute_training_loss(model, x_hat, x, allow_vq=False)
@@ -135,15 +194,25 @@ def train_noisy_latent_model(
 
             train_loss = train_loss_sum / max(1, n_batches)
 
+            # ---- Train metrics
             train_eval = evaluate_reconstruction(
-                model, train_loader, device,
-                variant="noisy_latent", noise_std=noise_latent, latent_noise=True,
-                max_batches=20
+                model,
+                train_loader,
+                device,
+                variant="noisy_latent",
+                noise_std=noise_std,
+                latent_noise=True,
+                max_batches=20,
             )
 
+            # ---- Validation
             val_eval = evaluate_reconstruction(
-                model, val_loader, device,
-                variant="noisy_latent", noise_std=noise_latent, latent_noise=True
+                model,
+                val_loader,
+                device,
+                variant="noisy_latent",
+                noise_std=noise_std,
+                latent_noise=True,
             )
 
             scheduler.step(val_eval.loss)
@@ -167,6 +236,13 @@ def train_noisy_latent_model(
             ])
             csv_f.flush()
 
+            is_best = val_eval.loss < best_val
+            if is_best:
+                best_val = val_eval.loss
+                best_epoch = epoch
+                state_dict_cpu = {k: v.detach().cpu() for k, v in model.state_dict().items()}
+                safe_save_state_dict(state_dict_cpu, ckpt_path)
+
             if log:
                 logger.info(
                     f"Epoch {epoch}/{epochs} | "
@@ -174,31 +250,67 @@ def train_noisy_latent_model(
                     f"val_loss={val_eval.loss:.6f} | "
                     f"PSNR={val_eval.psnr:.2f} | "
                     f"SSIM={val_eval.ssim:.4f} | "
-                    f"lr={current_lr:.6e}"
+                    f"lr={current_lr:.6e} | "
+                    f"noise_std={noise_std:.4f}"
                 )
+
+            if log_wandb:
+                wandb.log({
+                    "epoch": epoch,
+                    "lr": current_lr,
+                    "noise_std": noise_std,
+
+                    "train/loss": train_loss,
+                    "train/mse": train_eval.mse,
+                    "train/psnr": train_eval.psnr,
+                    "train/ssim": train_eval.ssim,
+
+                    "val/loss": val_eval.loss,
+                    "val/mse": val_eval.mse,
+                    "val/psnr": val_eval.psnr,
+                    "val/ssim": val_eval.ssim,
+
+                    "best/val_loss": best_val,
+                    "best/epoch": best_epoch,
+                })
 
             plot_metrics(metrics_hist, results_dir)
 
             images_dir = os.path.join(results_dir, "images")
             os.makedirs(images_dir, exist_ok=True)
 
+            image_path = os.path.join(images_dir, f"recon_epoch_{epoch:04d}.png")
             save_images(
                 model=model,
                 dataloader=val_loader,
                 device=device,
-                save_path=os.path.join(images_dir, f"recon_epoch_{epoch:04d}.png"),
+                save_path=image_path,
                 num_images=8,
                 add_noise=False,
-                latent_noise=True,  # <- latent noise
-                noise_std=noise_latent
+                latent_noise=True,
+                noise_std=noise_std,
             )
 
-            if val_eval.loss < best_val:
-                best_val = val_eval.loss
-                state_dict_cpu = {k: v.detach().cpu() for k, v in model.state_dict().items()}
-                safe_save_state_dict(state_dict_cpu, ckpt_path)
+            if log_wandb:
+                wandb.log({
+                    "val/reconstructions": wandb.Image(
+                        image_path,
+                        caption=f"{model_name} | noisy_latent | epoch {epoch}"
+                    )
+                })
+
+                if is_best:
+                    wandb.run.summary["best_val_loss"] = val_eval.loss
+                    wandb.run.summary["best_val_mse"] = val_eval.mse
+                    wandb.run.summary["best_val_psnr"] = val_eval.psnr
+                    wandb.run.summary["best_val_ssim"] = val_eval.ssim
+                    wandb.run.summary["best_epoch"] = epoch
+                    wandb.run.summary["best_checkpoint_path"] = ckpt_path
+                    wandb.run.summary["noise_std"] = noise_std
 
             if es.step(val_eval.loss):
+                if log and es.early_stop:
+                    logger.info(f"Early stopping triggered at epoch {epoch}.")
                 break
 
         txt_path = os.path.join(results_dir, "metrics_per_epoch.txt")
@@ -215,5 +327,7 @@ def train_noisy_latent_model(
 
     finally:
         csv_f.close()
+        if log_wandb:
+            wandb.finish()
 
     return ckpt_path

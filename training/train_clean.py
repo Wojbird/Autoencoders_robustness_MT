@@ -1,8 +1,9 @@
 import os
-
+import wandb
 import torch
 from torch.utils.data import DataLoader
 import logging
+
 logger = logging.getLogger(__name__)
 
 from data.data_setter import get_subnet_datasets, get_imagenet_datasets
@@ -26,6 +27,7 @@ def train_clean_model(
     dataset_type: str = "subset",
     log: bool = False,
     gpu_id: int | None = None,
+    log_wandb: bool = False,
 ) -> str:
     """
     Trains on clean inputs x -> x_hat.
@@ -66,10 +68,20 @@ def train_clean_model(
     else:
         raise ValueError("dataset_type must be 'subset' or 'full'.")
 
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True,
-                              num_workers=num_workers, pin_memory=True)
-    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False,
-                            num_workers=num_workers, pin_memory=True)
+    train_loader = DataLoader(
+        train_set,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=True,
+    )
+    val_loader = DataLoader(
+        val_set,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True,
+    )
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
 
@@ -100,6 +112,21 @@ def train_clean_model(
 
     es = EarlyStopping(patience=patience, min_delta=0.0)
     best_val = float("inf")
+    best_epoch = 0
+
+    run = None
+    if log_wandb:
+        run = wandb.init(
+            project="autoencoders-robustness",
+            name=f"{model_name}_{dataset_type}_clean",
+            config={
+                **cfg,
+                "dataset_type": dataset_type,
+                "training_variant": "clean",
+                "model_class": model_class.__name__,
+                "gpu_id": gpu_id,
+            },
+        )
 
     try:
         for epoch in range(1, epochs + 1):
@@ -126,17 +153,25 @@ def train_clean_model(
 
             train_loss = train_loss_sum / max(1, n_batches)
 
-            # Train metrics (on a small fixed window to keep it reasonable)
+            # ---- Train metrics
             train_eval = evaluate_reconstruction(
-                model, train_loader, device,
-                variant="clean", noise_std=0.0, latent_noise=False,
-                max_batches=20
+                model,
+                train_loader,
+                device,
+                variant="clean",
+                noise_std=0.0,
+                latent_noise=False,
+                max_batches=20,
             )
 
             # ---- Validation
             val_eval = evaluate_reconstruction(
-                model, val_loader, device,
-                variant="clean", noise_std=0.0, latent_noise=False
+                model,
+                val_loader,
+                device,
+                variant="clean",
+                noise_std=0.0,
+                latent_noise=False,
             )
 
             scheduler.step(val_eval.loss)
@@ -153,13 +188,21 @@ def train_clean_model(
             metrics_hist["psnr_val"].append(val_eval.psnr)
             metrics_hist["ssim_val"].append(val_eval.ssim)
 
-            # CSV row (Excel-friendly)
+            # CSV row
             csv_writer.writerow([
                 epoch,
                 train_loss, train_eval.mse, train_eval.psnr, train_eval.ssim,
                 val_eval.loss, val_eval.mse, val_eval.psnr, val_eval.ssim,
             ])
             csv_f.flush()
+
+            # Best checkpoint
+            is_best = val_eval.loss < best_val
+            if is_best:
+                best_val = val_eval.loss
+                best_epoch = epoch
+                state_dict_cpu = {k: v.detach().cpu() for k, v in model.state_dict().items()}
+                safe_save_state_dict(state_dict_cpu, ckpt_path)
 
             if log:
                 logger.info(
@@ -171,33 +214,64 @@ def train_clean_model(
                     f"lr={current_lr:.6e}"
                 )
 
+            if log_wandb:
+                wandb.log({
+                    "epoch": epoch,
+                    "lr": current_lr,
+
+                    "train/loss": train_loss,
+                    "train/mse": train_eval.mse,
+                    "train/psnr": train_eval.psnr,
+                    "train/ssim": train_eval.ssim,
+
+                    "val/loss": val_eval.loss,
+                    "val/mse": val_eval.mse,
+                    "val/psnr": val_eval.psnr,
+                    "val/ssim": val_eval.ssim,
+
+                    "best/val_loss": best_val,
+                    "best/epoch": best_epoch,
+                })
+
             plot_metrics(metrics_hist, results_dir)
 
             images_dir = os.path.join(results_dir, "images")
             os.makedirs(images_dir, exist_ok=True)
 
+            image_path = os.path.join(images_dir, f"recon_epoch_{epoch:04d}.png")
             save_images(
                 model=model,
                 dataloader=val_loader,
                 device=device,
-                save_path=os.path.join(images_dir, f"recon_epoch_{epoch:04d}.png"),
+                save_path=image_path,
                 num_images=8,
                 add_noise=False,
                 latent_noise=False,
-                noise_std=0.0
+                noise_std=0.0,
             )
 
-            # Best checkpoint on primary metric: val_loss (MSE)
-            if val_eval.loss < best_val:
-                best_val = val_eval.loss
-                state_dict_cpu = {k: v.detach().cpu() for k, v in model.state_dict().items()}
-                safe_save_state_dict(state_dict_cpu, ckpt_path)
+            if log_wandb:
+                wandb.log({
+                    "val/reconstructions": wandb.Image(
+                        image_path,
+                        caption=f"{model_name} | epoch {epoch}"
+                    )
+                })
+
+                if is_best:
+                    wandb.run.summary["best_val_loss"] = val_eval.loss
+                    wandb.run.summary["best_val_mse"] = val_eval.mse
+                    wandb.run.summary["best_val_psnr"] = val_eval.psnr
+                    wandb.run.summary["best_val_ssim"] = val_eval.ssim
+                    wandb.run.summary["best_epoch"] = epoch
+                    wandb.run.summary["best_checkpoint_path"] = ckpt_path
 
             # Early stopping
             if es.step(val_eval.loss):
+                if log and es.early_stop:
+                    logger.info(f"Early stopping triggered at epoch {epoch}.")
                 break
 
-        # Plain text (human-readable, line by line)
         txt_path = os.path.join(results_dir, "metrics_per_epoch.txt")
         with open(txt_path, "w", encoding="utf-8") as f:
             for i in range(len(metrics_hist["loss_val"])):
@@ -212,5 +286,7 @@ def train_clean_model(
 
     finally:
         csv_f.close()
+        if log_wandb:
+            wandb.finish()
 
     return ckpt_path
