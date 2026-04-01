@@ -7,21 +7,9 @@ from torch.utils.data import random_split, Dataset
 
 
 def load_dataset_root(config_path="data/root.json") -> str:
-    if not os.path.exists(config_path):
-        raise FileNotFoundError(
-            f"Dataset root config not found: {config_path}"
-        )
-
-    with open(config_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    root = data.get("full_root", "").strip()
-    if not root:
-        raise ValueError(
-            f"Field 'full_root' is missing or empty in {config_path}"
-        )
-
-    return root
+    dataset_path = os.environ.get("IMAGENET_DIR", "/data")
+    dataset_imagenet_2012_path = os.path.join(dataset_path, "ImageNet2012")
+    return dataset_imagenet_2012_path
 
 
 class ImageNetKaggle(Dataset):
