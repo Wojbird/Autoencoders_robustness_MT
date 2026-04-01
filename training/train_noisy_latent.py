@@ -35,15 +35,15 @@ def _forward_with_latent_noise(model, x, noise_std: float):
        hasattr(model, "decode") and callable(getattr(model, "decode")):
         z = model.encode(x)
         z = _unwrap_tensor(z)
-        z_noisy = z + torch.randn_like(z) * noise_std
+        z_noisy = z + torch.randn_like(z) * noise_std if noise_std > 0 else z
         x_hat = model.decode(z_noisy)
         x_hat = _unwrap_tensor(x_hat)
         return x_hat
 
-    if hasattr(model, "vq_loss") or hasattr(model, "vq_losses") or hasattr(model, "get_vq_losses"):
+    if hasattr(model, "encoder") and hasattr(model, "decoder"):
         z = model.encoder(x)
         z = _unwrap_tensor(z)
-        z_noisy = z + torch.randn_like(z) * noise_std
+        z_noisy = z + torch.randn_like(z) * noise_std if noise_std > 0 else z
         x_hat = model.decoder(z_noisy)
         x_hat = _unwrap_tensor(x_hat)
         return x_hat
@@ -96,7 +96,7 @@ def train_noisy_latent_model(
             f"Original error: {e}"
         )
 
-    if hasattr(model, "vq_loss") or hasattr(model, "vq_losses"):
+    if hasattr(model, "vq_loss") or hasattr(model, "vq_losses") or hasattr(model, "get_vq_losses"):
         raise TypeError(
             f"{model_class.__name__} appears to be a VQ-based model. "
             f"train_noisy_latent_model supports only classical autoencoders."
