@@ -170,5 +170,5 @@ W celu zmiany ścierzki wczytywania danych należy zmodyfokować plik "utils/dat
    
 4. Ewaluacja wszystkich modeli z folderu unet na zaszumionych danych:
    ```bash
-   python main.py --mode test --model unet --type noisy --input subset
+   python main.py --mode test --model unet_like --type noisy --input subset
    ```

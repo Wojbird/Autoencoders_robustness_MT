@@ -3,15 +3,19 @@
   "image_size": 224,
   "image_channels": 3,
   "embedding_dim": 512,
+  "num_embeddings": 2048,
+  "commitment_cost": 0.25,
+  "pre_channels": [32, 64],
+  "enc_channels": [128, 256, 384, 448, 512],
+  "dropout": 0.2,
   "batch_size": 32,
   "num_workers": 28,
   "epochs": 400,
   "learning_rate": 0.00003,
   "weight_decay": 0.00001,
   "betas_start": 0.9,
-  "betas_end":0.99,
+  "betas_end": 0.99,
   "noise_std": 0.05,
   "val_subset_fraction": 1.0,
-  "early_stopping_patience": 10,
-  "num_embeddings": 2048
+  "early_stopping_patience": 10
 }

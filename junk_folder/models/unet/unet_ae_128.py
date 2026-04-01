@@ -96,4 +96,4 @@ class UNetAE128(nn.Module):
         return self.decode(z)
 
 model_class = UNetAE128
-config_path = "configs/unet/unet_ae_128.json"
+config_path = "configs/unet_like/unet_like_ae_128.json"
