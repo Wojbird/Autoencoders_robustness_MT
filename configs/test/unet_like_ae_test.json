@@ -1,10 +1,10 @@
 {
-  "name": "residual_ae_test",
+  "name": "unet_like_ae_test",
   "image_size": 224,
   "image_channels": 3,
   "latent_dim": 784,
-  "pre_channels": [8, 16],
-  "enc_channels": [24, 32, 48, 56, 64],
+  "enc_channels": [16, 24, 32, 48, 56],
+  "bottleneck_channels": 64,
   "dropout": 0.1,
   "batch_size": 32,
   "num_workers": 8,

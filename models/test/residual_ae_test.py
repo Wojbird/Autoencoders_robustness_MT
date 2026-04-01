@@ -3,143 +3,139 @@ import torch.nn as nn
 
 
 class ResBlock(nn.Module):
-    def __init__(self, channels):
+    def __init__(self, channels: int):
         super().__init__()
         self.block = nn.Sequential(
-            nn.Conv2d(channels, channels, kernel_size=3, padding=1),
+            nn.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(channels),
             nn.LeakyReLU(0.1, inplace=True),
-            nn.Conv2d(channels, channels, kernel_size=3, padding=1),
-            nn.BatchNorm2d(channels)
+            nn.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(channels),
         )
         self.activation = nn.LeakyReLU(0.1, inplace=True)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.activation(x + self.block(x))
+
+
+def _make_encoder_stage(
+    in_channels: int,
+    out_channels: int,
+    *,
+    use_dropout: bool,
+    dropout: float,
+) -> nn.Sequential:
+    layers = [
+        nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=2, padding=1, bias=False),
+        nn.BatchNorm2d(out_channels),
+        nn.LeakyReLU(0.1, inplace=True),
+    ]
+    if use_dropout and dropout > 0.0:
+        layers.append(nn.Dropout2d(dropout))
+    layers.append(ResBlock(out_channels))
+    return nn.Sequential(*layers)
+
+
+def _make_decoder_stage(
+    in_channels: int,
+    out_channels: int,
+    *,
+    use_dropout: bool,
+    dropout: float,
+) -> nn.Sequential:
+    layers = [
+        nn.ConvTranspose2d(
+            in_channels,
+            out_channels,
+            kernel_size=3,
+            stride=2,
+            padding=1,
+            output_padding=1,
+            bias=False,
+        ),
+        nn.BatchNorm2d(out_channels),
+        nn.LeakyReLU(0.1, inplace=True),
+    ]
+    if use_dropout and dropout > 0.0:
+        layers.append(nn.Dropout2d(dropout))
+    layers.append(ResBlock(out_channels))
+    return nn.Sequential(*layers)
 
 
 class ResidualAETest(nn.Module):
     def __init__(self, config: dict):
         super().__init__()
-        image_channels = config["image_channels"]
-        latent_dim = config["latent_dim"]
-        assert latent_dim == 784, "This model is designed for latent_dim=784"
 
-        # Pre-encoder: 3 → 8 → 16
+        image_channels = int(config["image_channels"])
+        image_size = int(config.get("image_size", 224))
+        latent_dim = int(config["latent_dim"])
+        dropout = float(config.get("dropout", 0.1))
+
+        pre_channels = list(config.get("pre_channels", [8, 16]))
+        enc_channels = list(config.get("enc_channels", [24, 32, 48, 56, 64]))
+
+        if image_size % 32 != 0:
+            raise ValueError("image_size must be divisible by 32.")
+        if len(pre_channels) != 2:
+            raise ValueError("pre_channels must contain exactly 2 values.")
+        if len(enc_channels) != 5:
+            raise ValueError("enc_channels must contain exactly 5 values.")
+
+        self._latent_hw = image_size // 32
+        self._latent_channels = enc_channels[-1]
+
         self.pre_encoder = nn.Sequential(
-            nn.Conv2d(image_channels, 8, kernel_size=3, padding=1),
-            nn.BatchNorm2d(8),
+            nn.Conv2d(image_channels, pre_channels[0], kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(pre_channels[0]),
             nn.LeakyReLU(0.1, inplace=True),
-            nn.Conv2d(8, 16, kernel_size=3, padding=1),
-            nn.BatchNorm2d(16),
-            nn.LeakyReLU(0.1, inplace=True)
+            nn.Conv2d(pre_channels[0], pre_channels[1], kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(pre_channels[1]),
+            nn.LeakyReLU(0.1, inplace=True),
         )
 
-        # Encoder blocks
-        self.enc1 = nn.Sequential(
-            nn.Conv2d(16, 24, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(24),
-            nn.LeakyReLU(0.1, inplace=True),
-            ResBlock(24)
-        )
-        self.enc2 = nn.Sequential(
-            nn.Conv2d(24, 32, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(32),
-            nn.LeakyReLU(0.1, inplace=True),
-            nn.Dropout2d(0.1),
-            ResBlock(32)
-        )
-        self.enc3 = nn.Sequential(
-            nn.Conv2d(32, 48, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(48),
-            nn.LeakyReLU(0.1, inplace=True),
-            nn.Dropout2d(0.1),
-            ResBlock(48)
-        )
-        self.enc4 = nn.Sequential(
-            nn.Conv2d(48, 56, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(56),
-            nn.LeakyReLU(0.1, inplace=True),
-            nn.Dropout2d(0.1),
-            ResBlock(56)
-        )
-        self.enc5 = nn.Sequential(
-            nn.Conv2d(56, 64, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(64),
-            nn.LeakyReLU(0.1, inplace=True),
-            nn.Dropout2d(0.1),
-            ResBlock(64)
-        )
+        self.enc1 = _make_encoder_stage(pre_channels[1], enc_channels[0], use_dropout=False, dropout=dropout)
+        self.enc2 = _make_encoder_stage(enc_channels[0], enc_channels[1], use_dropout=True, dropout=dropout)
+        self.enc3 = _make_encoder_stage(enc_channels[1], enc_channels[2], use_dropout=True, dropout=dropout)
+        self.enc4 = _make_encoder_stage(enc_channels[2], enc_channels[3], use_dropout=True, dropout=dropout)
+        self.enc5 = _make_encoder_stage(enc_channels[3], enc_channels[4], use_dropout=True, dropout=dropout)
 
-        flat_dim = 64 * 7 * 7  # 64*7*7=3136 for 224
+        flat_dim = self._latent_channels * self._latent_hw * self._latent_hw
         self.fc_enc = nn.Linear(flat_dim, latent_dim)
         self.fc_dec = nn.Linear(latent_dim, flat_dim)
 
-        # Decoder blocks with skip connections
-        self.dec1 = nn.Sequential(
-            nn.ConvTranspose2d(64, 56, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.BatchNorm2d(56),
-            nn.LeakyReLU(0.1, inplace=True),
-            nn.Dropout2d(0.1),
-            ResBlock(56)
-        )
-        self.dec2 = nn.Sequential(
-            nn.ConvTranspose2d(56, 48, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.BatchNorm2d(48),
-            nn.LeakyReLU(0.1, inplace=True),
-            nn.Dropout2d(0.1),
-            ResBlock(48)
-        )
-        self.dec3 = nn.Sequential(
-            nn.ConvTranspose2d(48, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.BatchNorm2d(32),
-            nn.LeakyReLU(0.1, inplace=True),
-            nn.Dropout2d(0.1),
-            ResBlock(32)
-        )
-        self.dec4 = nn.Sequential(
-            nn.ConvTranspose2d(32, 24, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.BatchNorm2d(24),
-            nn.LeakyReLU(0.1, inplace=True),
-            ResBlock(24)
-        )
-        self.dec5 = nn.Sequential(
-            nn.ConvTranspose2d(24, 16, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.BatchNorm2d(16),
-            nn.LeakyReLU(0.1, inplace=True),
-            ResBlock(16)
-        )
+        dec_channels = list(reversed(enc_channels[:-1])) + [pre_channels[1]]
 
-        self.final = nn.Conv2d(16, image_channels, kernel_size=3, padding=1)
+        self.dec1 = _make_decoder_stage(enc_channels[4], dec_channels[0], use_dropout=True, dropout=dropout)
+        self.dec2 = _make_decoder_stage(dec_channels[0], dec_channels[1], use_dropout=True, dropout=dropout)
+        self.dec3 = _make_decoder_stage(dec_channels[1], dec_channels[2], use_dropout=True, dropout=dropout)
+        self.dec4 = _make_decoder_stage(dec_channels[2], dec_channels[3], use_dropout=False, dropout=dropout)
+        self.dec5 = _make_decoder_stage(dec_channels[3], dec_channels[4], use_dropout=False, dropout=dropout)
+
+        self.final = nn.Conv2d(pre_channels[1], image_channels, kernel_size=3, padding=1)
         self.activation = nn.Sigmoid()
 
-    def forward(self, x):
-        z = self.encode(x)
-        return self.decode(z)
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.pre_encoder(x)
+        x = self.enc1(x)
+        x = self.enc2(x)
+        x = self.enc3(x)
+        x = self.enc4(x)
+        z_map = self.enc5(x)
+        return self.fc_enc(z_map.flatten(1))
 
-    def encode(self, x):
-        x0 = self.pre_encoder(x)
-        x1 = self.enc1(x0)
-        x2 = self.enc2(x1)
-        x3 = self.enc3(x2)
-        x4 = self.enc4(x3)
-        z_map = self.enc5(x4)
+    def decode(self, z: torch.Tensor) -> torch.Tensor:
+        b = z.size(0)
+        x = self.fc_dec(z).view(b, self._latent_channels, self._latent_hw, self._latent_hw)
+        x = self.dec1(x)
+        x = self.dec2(x)
+        x = self.dec3(x)
+        x = self.dec4(x)
+        x = self.dec5(x)
+        return self.activation(self.final(x))
 
-        z_vec = self.fc_enc(z_map.flatten(1))  # (B, latent_dim)
-        return z_vec
-
-    def decode(self, z_vec):
-        b = z_vec.size(0)
-        z_map = self.fc_dec(z_vec).view(b, 64, 7, 7)
-
-        d1 = self.dec1(z_map)
-        d2 = self.dec2(d1)
-        d3 = self.dec3(d2)
-        d4 = self.dec4(d3)
-        d5 = self.dec5(d4)
-        return self.activation(self.final(d5))
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.decode(self.encode(x))
 
 
-# Required by main.py
 model_class = ResidualAETest
 config_path = "configs/test/residual_ae_test.json"
