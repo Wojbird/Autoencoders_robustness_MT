@@ -100,10 +100,13 @@ def discover_models(base_dir: str, target: str) -> list:
     base = Path(base_dir)
 
     def is_real_model_file(p: Path) -> bool:
+        parts = set(p.parts)
         return (
-            p.name.endswith(".py")
-            and not p.name.endswith("_base.py")
-            and p.name != "__init__.py"
+                p.name.endswith(".py")
+                and not p.name.endswith("_base.py")
+                and p.name != "__init__.py"
+                and "test" not in parts
+                and "junk_folder" not in parts
         )
 
     if target == "all":

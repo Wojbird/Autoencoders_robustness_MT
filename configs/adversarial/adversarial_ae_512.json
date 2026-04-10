@@ -1,9 +1,10 @@
 {
   "name": "adversarial_ae_512",
+  "family": "adversarial",
   "image_size": 224,
   "image_channels": 3,
   "latent_dim": 512,
-  "enc_channels": [24, 40, 64, 96, 128],
+  "encoder_channels": [24, 40, 64, 96, 128],
   "bottleneck_channels": 160,
   "dropout": 0.2,
   "disc_channels": [32, 64, 96, 128],

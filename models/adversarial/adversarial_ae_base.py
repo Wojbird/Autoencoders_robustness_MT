@@ -14,7 +14,7 @@ class ImageDiscriminator(nn.Module):
         if len(disc_channels) != 4:
             raise ValueError("config['disc_channels'] must contain exactly 4 values.")
 
-        c1, c2, c3, c4 = disc_channels
+        c1, c2, c3, c4 = map(int, disc_channels)
 
         self.net = nn.Sequential(
             nn.Conv2d(image_channels, c1, kernel_size=4, stride=2, padding=1, bias=False),

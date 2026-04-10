@@ -37,18 +37,19 @@ class ConvTransposeAEBase(nn.Module):
         image_size = int(config.get("image_size", 224))
         latent_dim = int(config["latent_dim"])
 
-        ch1 = int(config["ch1"])
-        ch2 = int(config["ch2"])
-        ch3 = int(config["ch3"])
-        ch4 = int(config["ch4"])
-        latent_channels = int(config["latent_channels"])
+        encoder_channels = list(config["encoder_channels"])
+        if len(encoder_channels) != 4:
+            raise ValueError("config['encoder_channels'] must contain exactly 4 values.")
+
+        ch1, ch2, ch3, ch4 = map(int, encoder_channels)
+        bottleneck_channels = int(config["bottleneck_channels"])
         dropout = float(config.get("dropout", 0.2))
 
         if image_size % 32 != 0:
             raise ValueError("image_size must be divisible by 32.")
 
         self._latent_hw = image_size // 32
-        self._latent_channels = latent_channels
+        self._bottleneck_channels = bottleneck_channels
 
         self.pre_encoder = nn.Sequential(
             nn.Conv2d(image_channels, ch1, kernel_size=3, padding=1, bias=False),
@@ -58,15 +59,15 @@ class ConvTransposeAEBase(nn.Module):
 
         self.enc1 = _conv_block(ch1, ch2, stride=2, dropout=0.0)
         self.enc2 = _conv_block(ch2, ch3, stride=2, dropout=0.0)
-        self.enc3 = _conv_block(ch3, ch4, stride=2, dropout=0.0)
+        self.enc3 = _conv_block(ch3, ch4, stride=2, dropout=dropout)
         self.enc4 = _conv_block(ch4, ch4, stride=2, dropout=dropout)
-        self.enc5 = _conv_block(ch4, latent_channels, stride=2, dropout=dropout)
+        self.enc5 = _conv_block(ch4, bottleneck_channels, stride=2, dropout=dropout)
 
-        flat_dim = latent_channels * self._latent_hw * self._latent_hw
+        flat_dim = bottleneck_channels * self._latent_hw * self._latent_hw
         self.fc_enc = nn.Linear(flat_dim, latent_dim)
         self.fc_dec = nn.Linear(latent_dim, flat_dim)
 
-        self.dec1 = _deconv_block(latent_channels, ch4)
+        self.dec1 = _deconv_block(bottleneck_channels, ch4)
         self.dec2 = _deconv_block(ch4, ch3)
         self.dec3 = _deconv_block(ch3, ch2)
         self.dec4 = _deconv_block(ch2, ch1)
@@ -88,7 +89,8 @@ class ConvTransposeAEBase(nn.Module):
         x = self.enc2(x)
         x = self.enc3(x)
         x = self.enc4(x)
-        return self.enc5(x)
+        x = self.enc5(x)
+        return x
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
         z_map = self._encode_map(x)
@@ -98,7 +100,7 @@ class ConvTransposeAEBase(nn.Module):
         batch_size = z_vec.size(0)
         z_map = self.fc_dec(z_vec).view(
             batch_size,
-            self._latent_channels,
+            self._bottleneck_channels,
             self._latent_hw,
             self._latent_hw,
         )

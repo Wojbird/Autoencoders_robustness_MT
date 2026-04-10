@@ -96,33 +96,36 @@ class VQVAEBase(nn.Module):
         num_embeddings = int(config["num_embeddings"])
         commitment_cost = float(config.get("commitment_cost", 0.25))
 
-        pre_channels = list(config["pre_channels"])
-        enc_channels = list(config["enc_channels"])
+        stem_channels = list(config["stem_channels"])
+        encoder_channels = list(config["encoder_channels"])
         bottleneck_channels = int(config["bottleneck_channels"])
         dropout = float(config.get("dropout", 0.2))
 
-        if len(pre_channels) != 2:
-            raise ValueError("config['pre_channels'] must contain exactly 2 values.")
-        if len(enc_channels) != 4:
-            raise ValueError("config['enc_channels'] must contain exactly 4 values.")
+        if len(stem_channels) != 2:
+            raise ValueError("config['stem_channels'] must contain exactly 2 values.")
+        if len(encoder_channels) != 4:
+            raise ValueError("config['encoder_channels'] must contain exactly 4 values.")
         if image_size % 32 != 0:
             raise ValueError("image_size must be divisible by 32.")
 
+        s1, s2 = map(int, stem_channels)
+        c1, c2, c3, c4 = map(int, encoder_channels)
+
         self.pre_encoder = nn.Sequential(
-            nn.Conv2d(image_channels, pre_channels[0], kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(pre_channels[0]),
+            nn.Conv2d(image_channels, s1, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(s1),
             nn.LeakyReLU(0.1, inplace=True),
 
-            nn.Conv2d(pre_channels[0], pre_channels[1], kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(pre_channels[1]),
+            nn.Conv2d(s1, s2, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(s2),
             nn.LeakyReLU(0.1, inplace=True),
         )
 
-        self.enc1 = make_stage(pre_channels[1], enc_channels[0], use_dropout=False, dropout_p=dropout)
-        self.enc2 = make_stage(enc_channels[0], enc_channels[1], use_dropout=True, dropout_p=dropout)
-        self.enc3 = make_stage(enc_channels[1], enc_channels[2], use_dropout=True, dropout_p=dropout)
-        self.enc4 = make_stage(enc_channels[2], enc_channels[3], use_dropout=True, dropout_p=dropout)
-        self.enc5 = make_stage(enc_channels[3], bottleneck_channels, use_dropout=True, dropout_p=dropout)
+        self.enc1 = make_stage(s2, c1, use_dropout=False, dropout_p=dropout)
+        self.enc2 = make_stage(c1, c2, use_dropout=True, dropout_p=dropout)
+        self.enc3 = make_stage(c2, c3, use_dropout=True, dropout_p=dropout)
+        self.enc4 = make_stage(c3, c4, use_dropout=True, dropout_p=dropout)
+        self.enc5 = make_stage(c4, bottleneck_channels, use_dropout=True, dropout_p=dropout)
 
         self.to_quant = nn.Conv2d(bottleneck_channels, latent_dim, kernel_size=1)
         self.from_quant = nn.Conv2d(latent_dim, bottleneck_channels, kernel_size=1)
@@ -133,15 +136,13 @@ class VQVAEBase(nn.Module):
             commitment_cost=commitment_cost,
         )
 
-        dec_channels = [enc_channels[3], enc_channels[2], enc_channels[1], enc_channels[0], pre_channels[1]]
+        self.dec1 = make_stage(bottleneck_channels, c4, transpose=True, use_dropout=False, dropout_p=dropout)
+        self.dec2 = make_stage(c4, c3, transpose=True, use_dropout=True, dropout_p=dropout)
+        self.dec3 = make_stage(c3, c2, transpose=True, use_dropout=True, dropout_p=dropout)
+        self.dec4 = make_stage(c2, c1, transpose=True, use_dropout=False, dropout_p=dropout)
+        self.dec5 = make_stage(c1, s2, transpose=True, use_dropout=False, dropout_p=dropout)
 
-        self.dec1 = make_stage(bottleneck_channels, dec_channels[0], transpose=True, use_dropout=False, dropout_p=dropout)
-        self.dec2 = make_stage(dec_channels[0], dec_channels[1], transpose=True, use_dropout=True, dropout_p=dropout)
-        self.dec3 = make_stage(dec_channels[1], dec_channels[2], transpose=True, use_dropout=True, dropout_p=dropout)
-        self.dec4 = make_stage(dec_channels[2], dec_channels[3], transpose=True, use_dropout=False, dropout_p=dropout)
-        self.dec5 = make_stage(dec_channels[3], dec_channels[4], transpose=True, use_dropout=False, dropout_p=dropout)
-
-        self.final = nn.Conv2d(pre_channels[1], image_channels, kernel_size=3, padding=1)
+        self.final = nn.Conv2d(s2, image_channels, kernel_size=3, padding=1)
         self.activation = nn.Sigmoid()
 
         self.vq_loss = None
