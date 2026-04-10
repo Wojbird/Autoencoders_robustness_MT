@@ -100,4 +100,4 @@ class UNetAE64(nn.Module):
 
 # Required by main.py
 model_class = UNetAE64
-config_path = "configs/unet_like/unet_like_ae_64.json"
+config_path = "configs/unet/unet_ae_64.json"

@@ -8,6 +8,12 @@ logger = logging.getLogger(__name__)
 
 from data.data_setter import get_subnet_datasets, get_imagenet_datasets
 from evaluation.evaluate import evaluate_reconstruction, compute_training_loss
+from training._adversarial import (
+    unwrap_tensor,
+    build_discriminator,
+    discriminator_step,
+    generator_adv_loss,
+)
 from utils.helpers import (
     get_device,
     save_images,
@@ -50,6 +56,8 @@ def train_noisy_model(
     device = get_device(gpu_id)
     model = model_class(cfg).to(device)
 
+    discriminator, optimizer_d, bce, adv_weight = build_discriminator(model, cfg, device)
+
     if dataset_type == "full":
         train_set, val_set = get_imagenet_datasets(image_size=image_size)
     elif dataset_type == "subset":
@@ -83,7 +91,7 @@ def train_noisy_model(
     csv_path = os.path.join(results_dir, "metrics_per_epoch.csv")
     csv_f, csv_writer = init_csv_logger(
         csv_path,
-        extra_columns=["val_noisy_mse", "val_noisy_psnr", "val_noisy_ssim"],
+        extra_columns=["val_noisy_mse", "val_noisy_psnr", "val_noisy_ssim", "disc_loss"],
     )
 
     metrics_hist = {
@@ -107,19 +115,30 @@ def train_noisy_model(
     try:
         for epoch in range(1, epochs + 1):
             model.train()
+            if discriminator is not None:
+                discriminator.train()
+
             train_loss_sum = 0.0
+            disc_loss_sum = 0.0
             n_batches = 0
 
             for x, _ in train_loader:
                 x = x.to(device)
                 x_noisy = torch.clamp(x + noise_std * torch.randn_like(x), 0.0, 1.0)
 
-                optimizer.zero_grad(set_to_none=True)
-                x_hat = model(x_noisy)
-                if isinstance(x_hat, (tuple, list)):
-                    x_hat = x_hat[0]
+                if discriminator is not None:
+                    with torch.no_grad():
+                        x_hat_disc = unwrap_tensor(model(x_noisy))
+                    disc_loss_sum += discriminator_step(discriminator, optimizer_d, bce, x, x_hat_disc)
 
+                optimizer.zero_grad(set_to_none=True)
+
+                x_hat = unwrap_tensor(model(x_noisy))
                 loss = compute_training_loss(model, x_hat, x, allow_vq=True)
+
+                if discriminator is not None:
+                    loss = loss + adv_weight * generator_adv_loss(discriminator, bce, x_hat)
+
                 loss.backward()
                 optimizer.step()
 
@@ -127,6 +146,7 @@ def train_noisy_model(
                 n_batches += 1
 
             train_loss = train_loss_sum / max(1, n_batches)
+            disc_loss = disc_loss_sum / max(1, n_batches) if discriminator is not None else 0.0
 
             train_eval = evaluate_reconstruction(
                 model, train_eval_loader, device,
@@ -158,11 +178,11 @@ def train_noisy_model(
                 train_loss, train_eval.mse, train_eval.psnr, train_eval.ssim,
                 val_eval.loss, val_eval.mse, val_eval.psnr, val_eval.ssim,
                 val_eval_noisy.mse, val_eval_noisy.psnr, val_eval_noisy.ssim,
+                disc_loss,
             ])
             csv_f.flush()
 
-            is_best = val_eval.loss < best_val
-            if is_best:
+            if val_eval.loss < best_val:
                 best_val = val_eval.loss
                 best_epoch = epoch
                 state_dict_cpu = {k: v.detach().cpu() for k, v in model.state_dict().items()}
@@ -172,6 +192,7 @@ def train_noisy_model(
                 logger.info(
                     f"Epoch {epoch}/{epochs} | "
                     f"train_loss={train_loss:.6f} | "
+                    f"disc_loss={disc_loss:.6f} | "
                     f"val_clean_loss={val_eval.loss:.6f} | "
                     f"val_clean_psnr={val_eval.psnr:.2f} | "
                     f"val_clean_ssim={val_eval.ssim:.4f} | "
@@ -187,6 +208,7 @@ def train_noisy_model(
                     "lr": current_lr,
                     "noise_std": noise_std,
                     "train/loss": train_loss,
+                    "train/disc_loss": disc_loss,
                     "train/mse": train_eval.mse,
                     "train/psnr": train_eval.psnr,
                     "train/ssim": train_eval.ssim,
@@ -225,21 +247,6 @@ def train_noisy_model(
                 if log:
                     logger.info(f"Early stopping triggered at epoch {epoch}.")
                 break
-
-        txt_path = os.path.join(results_dir, "metrics_per_epoch.txt")
-        with open(txt_path, "w", encoding="utf-8") as f:
-            for i in range(len(metrics_hist["loss_val"])):
-                f.write(
-                    f"epoch={i+1} "
-                    f"train_loss={metrics_hist['loss_train'][i]:.6f} "
-                    f"train_mse={metrics_hist['mse_train'][i]:.6f} "
-                    f"train_psnr={metrics_hist['psnr_train'][i]:.6f} "
-                    f"train_ssim={metrics_hist['ssim_train'][i]:.6f} "
-                    f"val_loss={metrics_hist['loss_val'][i]:.6f} "
-                    f"val_mse={metrics_hist['mse_val'][i]:.6f} "
-                    f"val_psnr={metrics_hist['psnr_val'][i]:.6f} "
-                    f"val_ssim={metrics_hist['ssim_val'][i]:.6f}\n"
-                )
 
     finally:
         csv_f.close()
