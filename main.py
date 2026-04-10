@@ -31,19 +31,25 @@ def parse_args():
     parser.add_argument(
         "--model",
         required=True,
-        help="Model name (e.g., ae_convtranspose512_7x7), group (e.g., conv), or 'all'"
+        help="Model name, group or 'all'"
     )
     parser.add_argument(
         "--type",
         choices=["clean", "noisy", "noisy_latent", "all"],
         default="clean",
-        help="Input variant: clean, noisy, noisy_latent or all (runs all three)"
+        help="Training/input variant"
     )
     parser.add_argument(
         "--input",
         choices=["subset", "full"],
         default="subset",
-        help="Dataset source: subset or full"
+        help="Dataset source"
+    )
+    parser.add_argument(
+        "--eval_on",
+        choices=["clean", "noisy", "all"],
+        default="all",
+        help="Evaluation condition used in test mode."
     )
     parser.add_argument(
         "--log",
@@ -59,7 +65,7 @@ def parse_args():
         "--gpu",
         type=int,
         default=None,
-        help="CUDA GPU id to use, e.g. 0, 1, 2. If not provided, default CUDA device is used."
+        help="CUDA GPU id to use"
     )
     return parser.parse_args()
 
@@ -81,14 +87,13 @@ def build_val_loader(cfg: dict, dataset_type: str):
     else:
         raise ValueError(f"Unknown dataset_type: {dataset_type}")
 
-    val_loader = DataLoader(
+    return DataLoader(
         val_set,
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
         pin_memory=True,
     )
-    return val_loader
 
 
 def discover_models(base_dir: str, target: str) -> list:
@@ -130,32 +135,27 @@ def import_model(module_path: Path):
     return model_class, config_path
 
 
-def run(mode, model_path: Path, input_type, dataset_type, log, log_wandb, gpu_id=None):
+def run(mode, model_path: Path, input_type, dataset_type, log, log_wandb, gpu_id=None, eval_on="all"):
     if input_type == "all":
         for variant in ["clean", "noisy", "noisy_latent"]:
             print(f"\n--- Running {mode} for input type: {variant} ---")
-            run(mode, model_path, variant, dataset_type, log, log_wandb, gpu_id=gpu_id)
+            run(mode, model_path, variant, dataset_type, log, log_wandb, gpu_id=gpu_id, eval_on=eval_on)
         return
 
     model_class, config_path = import_model(model_path)
     cfg = load_config(config_path)
 
     model_name = str(cfg.get("name", model_path.stem))
-    if input_type == "noisy_latent":
-        noise_std = float(cfg.get("noise_latent", cfg.get("noise_std", 0.0)))
-    else:
-        noise_std = float(cfg.get("noise_std", 0.0))
+    train_noise_std = float(cfg.get("noise_latent", cfg.get("noise_std", 0.0))) if input_type == "noisy_latent" else float(cfg.get("noise_std", 0.0))
 
     results_dir = os.path.join("results", model_name, dataset_type, input_type)
     os.makedirs(results_dir, exist_ok=True)
 
-    # poprawna domyślna ścieżka checkpointu
     ckpt_dir = os.path.join("checkpoints", model_name, dataset_type, input_type)
     ckpt_path = os.path.join(ckpt_dir, f"{model_name}_{input_type}_best.pt")
 
     trained_ckpt = None
 
-    # ---------- TRAIN ----------
     if mode in ("train", "train_test"):
         if input_type == "clean":
             trained_ckpt = train_clean_model(
@@ -187,12 +187,11 @@ def run(mode, model_path: Path, input_type, dataset_type, log, log_wandb, gpu_id
         else:
             raise ValueError(f"Unknown input type: {input_type}")
 
-        if isinstance(trained_ckpt, str) and len(trained_ckpt) > 0:
+        if isinstance(trained_ckpt, str) and trained_ckpt:
             ckpt_path = trained_ckpt
 
         print(f"Best checkpoint: {ckpt_path}")
 
-    # ---------- TEST ----------
     if mode in ("test", "train_test"):
         if not os.path.exists(ckpt_path):
             raise FileNotFoundError(
@@ -210,20 +209,24 @@ def run(mode, model_path: Path, input_type, dataset_type, log, log_wandb, gpu_id
         model.load_state_dict(state)
 
         val_loader = build_val_loader(cfg, dataset_type)
+        eval_noise_std = float(cfg.get("eval_noise_std", cfg.get("noise_std", train_noise_std)))
+        eval_variants = ["clean", "noisy"] if eval_on == "all" else [eval_on]
 
-        test_dir = os.path.join(results_dir, "test")
-        metrics = evaluate_model(
-            model=model,
-            dataloader=val_loader,
-            device=device,
-            variant=input_type,
-            noise_std=noise_std,
-            results_dir=test_dir,
-        )
+        for eval_variant in eval_variants:
+            test_dir = os.path.join(results_dir, "test", f"{eval_variant}_eval")
+            metrics = evaluate_model(
+                model=model,
+                dataloader=val_loader,
+                device=device,
+                variant=eval_variant,
+                noise_std=eval_noise_std,
+                results_dir=test_dir,
+                noise_seed=1234,
+            )
 
-        print("Evaluation metrics:")
-        for k, v in metrics.items():
-            print(f"  {k}: {v:.6f}")
+            print(f"Evaluation metrics ({eval_variant}):")
+            for k, v in metrics.items():
+                print(f"  {k}: {v:.6f}")
 
 
 def main():
@@ -251,6 +254,7 @@ def main():
             args.log,
             args.log_wandb,
             gpu_id=args.gpu,
+            eval_on=args.eval_on,
         )
 
 

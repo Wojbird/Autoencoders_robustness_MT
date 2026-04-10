@@ -92,22 +92,21 @@ class VQVAEBase(nn.Module):
         image_channels = int(config["image_channels"])
         image_size = int(config.get("image_size", 224))
 
-        embedding_dim = int(config["embedding_dim"])
+        latent_dim = int(config["latent_dim"])
         num_embeddings = int(config["num_embeddings"])
         commitment_cost = float(config.get("commitment_cost", 0.25))
 
         pre_channels = list(config["pre_channels"])
         enc_channels = list(config["enc_channels"])
+        bottleneck_channels = int(config["bottleneck_channels"])
         dropout = float(config.get("dropout", 0.2))
 
         if len(pre_channels) != 2:
             raise ValueError("config['pre_channels'] must contain exactly 2 values.")
-        if len(enc_channels) != 5:
-            raise ValueError("config['enc_channels'] must contain exactly 5 values.")
+        if len(enc_channels) != 4:
+            raise ValueError("config['enc_channels'] must contain exactly 4 values.")
         if image_size % 32 != 0:
             raise ValueError("image_size must be divisible by 32.")
-        if enc_channels[-1] != embedding_dim:
-            raise ValueError("embedding_dim must be equal to enc_channels[-1].")
 
         self.pre_encoder = nn.Sequential(
             nn.Conv2d(image_channels, pre_channels[0], kernel_size=3, padding=1, bias=False),
@@ -119,23 +118,24 @@ class VQVAEBase(nn.Module):
             nn.LeakyReLU(0.1, inplace=True),
         )
 
-        # Encoder: enc1 bez dropout, enc2-enc5 z dropout
         self.enc1 = make_stage(pre_channels[1], enc_channels[0], use_dropout=False, dropout_p=dropout)
         self.enc2 = make_stage(enc_channels[0], enc_channels[1], use_dropout=True, dropout_p=dropout)
         self.enc3 = make_stage(enc_channels[1], enc_channels[2], use_dropout=True, dropout_p=dropout)
         self.enc4 = make_stage(enc_channels[2], enc_channels[3], use_dropout=True, dropout_p=dropout)
-        self.enc5 = make_stage(enc_channels[3], enc_channels[4], use_dropout=True, dropout_p=dropout)
+        self.enc5 = make_stage(enc_channels[3], bottleneck_channels, use_dropout=True, dropout_p=dropout)
+
+        self.to_quant = nn.Conv2d(bottleneck_channels, latent_dim, kernel_size=1)
+        self.from_quant = nn.Conv2d(latent_dim, bottleneck_channels, kernel_size=1)
 
         self.quantizer = VectorQuantizer(
             num_embeddings=num_embeddings,
-            embedding_dim=embedding_dim,
+            embedding_dim=latent_dim,
             commitment_cost=commitment_cost,
         )
 
-        dec_channels = list(reversed(enc_channels[:-1])) + [pre_channels[1]]
+        dec_channels = [enc_channels[3], enc_channels[2], enc_channels[1], enc_channels[0], pre_channels[1]]
 
-        # Decoder: dec1 bez dropout, dec2-dec3 z dropout, dec4-dec5 bez dropout
-        self.dec1 = make_stage(enc_channels[4], dec_channels[0], transpose=True, use_dropout=False, dropout_p=dropout)
+        self.dec1 = make_stage(bottleneck_channels, dec_channels[0], transpose=True, use_dropout=False, dropout_p=dropout)
         self.dec2 = make_stage(dec_channels[0], dec_channels[1], transpose=True, use_dropout=True, dropout_p=dropout)
         self.dec3 = make_stage(dec_channels[1], dec_channels[2], transpose=True, use_dropout=True, dropout_p=dropout)
         self.dec4 = make_stage(dec_channels[2], dec_channels[3], transpose=True, use_dropout=False, dropout_p=dropout)
@@ -146,18 +146,23 @@ class VQVAEBase(nn.Module):
 
         self.vq_loss = None
 
-    def encode(self, x: torch.Tensor) -> torch.Tensor:
+    def _encode_map(self, x: torch.Tensor) -> torch.Tensor:
         x = self.pre_encoder(x)
         x = self.enc1(x)
         x = self.enc2(x)
         x = self.enc3(x)
         x = self.enc4(x)
-        z_e = self.enc5(x)
+        x = self.enc5(x)
+        return x
 
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
+        z_e = self._encode_map(x)
+        z_e = self.to_quant(z_e)
         z_q, self.vq_loss = self.quantizer(z_e)
         return z_q
 
-    def decode(self, z: torch.Tensor) -> torch.Tensor:
+    def decode(self, z_q: torch.Tensor) -> torch.Tensor:
+        z = self.from_quant(z_q)
         z = self.dec1(z)
         z = self.dec2(z)
         z = self.dec3(z)

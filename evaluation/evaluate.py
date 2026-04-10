@@ -12,19 +12,39 @@ def _unwrap_tensor(x):
     return x
 
 
-def _forward_with_latent_noise(model: nn.Module, x: torch.Tensor, noise_std: float) -> torch.Tensor:
+def _randn_like_seeded(x: torch.Tensor, seed: Optional[int], offset: int) -> torch.Tensor:
+    if seed is None:
+        return torch.randn_like(x)
+
+    devices = [x.device] if x.device.type == "cuda" else []
+    with torch.random.fork_rng(devices=devices):
+        torch.manual_seed(seed + offset)
+        if x.device.type == "cuda":
+            torch.cuda.manual_seed_all(seed + offset)
+        return torch.randn_like(x)
+
+
+def _forward_with_latent_noise(
+    model: nn.Module,
+    x: torch.Tensor,
+    noise_std: float,
+    noise_seed: Optional[int] = None,
+    batch_idx: int = 0,
+) -> torch.Tensor:
     if hasattr(model, "encode") and callable(getattr(model, "encode")) and \
        hasattr(model, "decode") and callable(getattr(model, "decode")):
         z = model.encode(x)
         z = _unwrap_tensor(z)
-        z_noisy = z + noise_std * torch.randn_like(z) if noise_std > 0 else z
+        noise = _randn_like_seeded(z, noise_seed, batch_idx)
+        z_noisy = z + noise_std * noise if noise_std > 0 else z
         x_hat = model.decode(z_noisy)
         return _unwrap_tensor(x_hat)
 
     if hasattr(model, "encoder") and hasattr(model, "decoder"):
         z = model.encoder(x)
         z = _unwrap_tensor(z)
-        z_noisy = z + noise_std * torch.randn_like(z) if noise_std > 0 else z
+        noise = _randn_like_seeded(z, noise_seed, batch_idx)
+        z_noisy = z + noise_std * noise if noise_std > 0 else z
         x_hat = model.decoder(z_noisy)
         return _unwrap_tensor(x_hat)
 
@@ -44,6 +64,7 @@ def evaluate_reconstruction(
     noise_std: float = 0.0,
     latent_noise: bool = False,
     max_batches: Optional[int] = None,
+    noise_seed: Optional[int] = None,
 ) -> EvalResult:
     model.eval()
     loss_fn = nn.MSELoss()
@@ -60,10 +81,17 @@ def evaluate_reconstruction(
         x = x.to(device)
 
         if latent_noise or variant == "noisy_latent":
-            x_hat = _forward_with_latent_noise(model, x, noise_std)
+            x_hat = _forward_with_latent_noise(
+                model,
+                x,
+                noise_std=noise_std,
+                noise_seed=noise_seed,
+                batch_idx=i,
+            )
         else:
             if variant == "noisy" and noise_std > 0:
-                x_in = torch.clamp(x + noise_std * torch.randn_like(x), 0.0, 1.0)
+                noise = _randn_like_seeded(x, noise_seed, i)
+                x_in = torch.clamp(x + noise_std * noise, 0.0, 1.0)
             else:
                 x_in = x
 
@@ -113,6 +141,7 @@ def evaluate_model(
     variant: str,
     noise_std: float,
     results_dir: Optional[str] = None,
+    noise_seed: Optional[int] = None,
 ) -> Dict[str, float]:
     latent = (variant == "noisy_latent")
     res = evaluate_reconstruction(
@@ -122,6 +151,7 @@ def evaluate_model(
         variant=variant,
         noise_std=noise_std,
         latent_noise=latent,
+        noise_seed=noise_seed,
     )
 
     out = {

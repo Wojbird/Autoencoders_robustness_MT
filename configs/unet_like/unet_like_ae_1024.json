@@ -1,8 +1,8 @@
 {
-  "name": "unet_like_ae_256",
+  "name": "unet_like_ae_1024",
   "image_size": 224,
   "image_channels": 3,
-  "latent_dim": 256,
+  "latent_dim": 1024,
   "enc_channels": [32, 64, 96, 128, 160],
   "bottleneck_channels": 192,
   "dropout": 0.2,

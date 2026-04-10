@@ -56,22 +56,13 @@ def save_metrics(metrics_dict, save_path):
 
 
 def plot_metrics(metrics_hist: dict, results_dir: str):
-    """
-    Saves one PNG per metric into results_dir.
-    Expected keys (lists of floats):
-      - loss_train, loss_val
-      - mse_train, mse_val
-      - psnr_train, psnr_val
-      - ssim_train, ssim_val
-    Missing keys are skipped gracefully.
-    """
     os.makedirs(results_dir, exist_ok=True)
 
     metric_specs = [
         ("loss", "Loss (MSE-based)", "loss_train", "loss_val"),
-        ("mse",  "MSE",             "mse_train",  "mse_val"),
-        ("psnr", "PSNR",            "psnr_train", "psnr_val"),
-        ("ssim", "SSIM",            "ssim_train", "ssim_val"),
+        ("mse", "MSE", "mse_train", "mse_val"),
+        ("psnr", "PSNR", "psnr_train", "psnr_val"),
+        ("ssim", "SSIM", "ssim_train", "ssim_val"),
     ]
 
     for fname, title, k_train, k_val in metric_specs:
@@ -93,8 +84,6 @@ def plot_metrics(metrics_hist: dict, results_dir: str):
         ax.set_xlabel("epoch")
         ax.set_ylabel(fname)
         ax.legend()
-
-        # 🔽 KLUCZOWA POPRAWKA
         ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 
         out_path = os.path.join(results_dir, f"{fname}.png")
@@ -214,15 +203,20 @@ def make_results_dir(model_name: str, dataset_type: str, variant: str) -> str:
     return os.path.join("results", model_name, dataset_type, variant)
 
 
-def init_csv_logger(csv_path: str):
+def init_csv_logger(csv_path: str, extra_columns=None):
+    if extra_columns is None:
+        extra_columns = []
+
     new_file = not os.path.exists(csv_path)
     f = open(csv_path, "a", newline="", encoding="utf-8")
     writer = csv.writer(f)
+
     if new_file:
         writer.writerow([
             "epoch",
             "train_loss", "train_mse", "train_psnr", "train_ssim",
             "val_loss", "val_mse", "val_psnr", "val_ssim",
+            *extra_columns,
         ])
     return f, writer
 
@@ -236,13 +230,6 @@ class EvalResult:
 
 
 def get_vq_reg_loss(model: nn.Module) -> torch.Tensor:
-    """
-    Returns VQ regularization loss stored inside the model (if any).
-    Supports:
-      - model.vq_loss (scalar tensor)
-      - model.vq_losses (list/tuple of scalar tensors or dict of scalar tensors)
-    If nothing exists, returns 0 on the correct device.
-    """
     device = next(model.parameters()).device
 
     if hasattr(model, "vq_loss") and getattr(model, "vq_loss") is not None:
@@ -275,13 +262,8 @@ def make_metrics(device: torch.device):
     ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
     return mse, psnr, ssim
 
+
 def safe_save_state_dict(state_dict, final_ckpt_path: str, retries: int = 3, delay: float = 2.0):
-    """
-    Saves checkpoint robustly:
-    - first to local scratch/tmp
-    - then copies to final .tmp path
-    - finally atomically replaces destination
-    """
     final_dir = os.path.dirname(final_ckpt_path)
     os.makedirs(final_dir, exist_ok=True)
 

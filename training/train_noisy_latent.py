@@ -27,26 +27,20 @@ def _unwrap_tensor(x):
 
 
 def _forward_with_latent_noise(model, x, noise_std: float):
-    """
-    Forward pass for classical autoencoders only:
-    x -> encode -> z -> z_noisy -> decode -> x_hat
-    """
     if hasattr(model, "encode") and callable(getattr(model, "encode")) and \
        hasattr(model, "decode") and callable(getattr(model, "decode")):
         z = model.encode(x)
         z = _unwrap_tensor(z)
         z_noisy = z + torch.randn_like(z) * noise_std if noise_std > 0 else z
         x_hat = model.decode(z_noisy)
-        x_hat = _unwrap_tensor(x_hat)
-        return x_hat
+        return _unwrap_tensor(x_hat)
 
     if hasattr(model, "encoder") and hasattr(model, "decoder"):
         z = model.encoder(x)
         z = _unwrap_tensor(z)
         z_noisy = z + torch.randn_like(z) * noise_std if noise_std > 0 else z
         x_hat = model.decoder(z_noisy)
-        x_hat = _unwrap_tensor(x_hat)
-        return x_hat
+        return _unwrap_tensor(x_hat)
 
     raise AttributeError(
         f"{model.__class__.__name__} must expose either "
@@ -63,13 +57,6 @@ def train_noisy_latent_model(
     gpu_id: int | None = None,
     log_wandb: bool = False,
 ) -> str:
-    """
-    Trains with noise added in latent space:
-    x -> z -> z_noisy -> x_hat
-
-    Supports only classical autoencoders.
-    Does NOT support VQ-VAE / VQ-VAE2.
-    """
     cfg = load_config(config_path)
 
     model_name = cfg["name"]
@@ -80,7 +67,9 @@ def train_noisy_latent_model(
     lr = float(cfg["learning_rate"])
     wd = float(cfg.get("weight_decay", 0.0))
     noise_std = float(cfg.get("noise_latent", cfg.get("noise_std", 0.0)))
+    eval_noise_std = float(cfg.get("eval_noise_std", cfg.get("noise_std", 0.0)))
     val_fraction = float(cfg.get("val_subset_fraction", 1.0))
+    train_eval_fraction = float(cfg.get("train_eval_fraction", 0.1))
     patience = int(cfg.get("early_stopping_patience", 10))
     scheduler_factor = float(cfg.get("scheduler_factor", 0.5))
     scheduler_patience = int(cfg.get("scheduler_patience", 5))
@@ -88,19 +77,7 @@ def train_noisy_latent_model(
     scheduler_threshold = float(cfg.get("scheduler_threshold", 1e-4))
 
     device = get_device(gpu_id)
-    try:
-        model = model_class(cfg).to(device)
-    except TypeError as e:
-        raise TypeError(
-            f"{model_class.__name__} must accept config dict in __init__(self, config). "
-            f"Original error: {e}"
-        )
-
-    if hasattr(model, "vq_loss") or hasattr(model, "vq_losses") or hasattr(model, "get_vq_losses"):
-        raise TypeError(
-            f"{model_class.__name__} appears to be a VQ-based model. "
-            f"train_noisy_latent_model supports only classical autoencoders."
-        )
+    model = model_class(cfg).to(device)
 
     if dataset_type == "full":
         train_set, val_set = get_imagenet_datasets(image_size=image_size)
@@ -110,23 +87,13 @@ def train_noisy_latent_model(
     else:
         raise ValueError("dataset_type must be 'subset' or 'full'.")
 
-    train_loader = DataLoader(
-        train_set,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        pin_memory=True,
-    )
-    val_loader = DataLoader(
-        val_set,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        pin_memory=True,
-    )
+    train_eval_set = ensure_val_fraction(train_set, train_eval_fraction, split_seed=123)
+
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
+    train_eval_loader = DataLoader(train_eval_set, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
-
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
         mode="min",
@@ -137,14 +104,16 @@ def train_noisy_latent_model(
     )
 
     results_dir = os.path.join("results", model_name, dataset_type, "noisy_latent")
-    os.makedirs(results_dir, exist_ok=True)
-
     ckpt_dir = os.path.join("checkpoints", model_name, dataset_type, "noisy_latent")
+    os.makedirs(results_dir, exist_ok=True)
     os.makedirs(ckpt_dir, exist_ok=True)
 
     ckpt_path = os.path.join(ckpt_dir, f"{model_name}_noisy_latent_best.pt")
     csv_path = os.path.join(results_dir, "metrics_per_epoch.csv")
-    csv_f, csv_writer = init_csv_logger(csv_path)
+    csv_f, csv_writer = init_csv_logger(
+        csv_path,
+        extra_columns=["val_noisy_mse", "val_noisy_psnr", "val_noisy_ssim"],
+    )
 
     metrics_hist = {
         "mse_train": [], "psnr_train": [], "ssim_train": [],
@@ -161,19 +130,11 @@ def train_noisy_latent_model(
         run = wandb.init(
             project="autoencoders-robustness",
             name=f"{model_name}_{dataset_type}_noisy_latent",
-            config={
-                **cfg,
-                "dataset_type": dataset_type,
-                "training_variant": "noisy_latent",
-                "model_class": model_class.__name__,
-                "gpu_id": gpu_id,
-                "noise_std": noise_std,
-            },
+            config={**cfg, "dataset_type": dataset_type, "training_variant": "noisy_latent", "model_class": model_class.__name__, "gpu_id": gpu_id, "noise_std": noise_std},
         )
 
     try:
         for epoch in range(1, epochs + 1):
-            # ---- Train
             model.train()
             train_loss_sum = 0.0
             n_batches = 0
@@ -183,9 +144,7 @@ def train_noisy_latent_model(
 
                 optimizer.zero_grad(set_to_none=True)
                 x_hat = _forward_with_latent_noise(model, x, noise_std)
-                x_hat = torch.clamp(x_hat, 0.0, 1.0)
-
-                loss = compute_training_loss(model, x_hat, x, allow_vq=False)
+                loss = compute_training_loss(model, x_hat, x, allow_vq=True)
                 loss.backward()
                 optimizer.step()
 
@@ -194,25 +153,17 @@ def train_noisy_latent_model(
 
             train_loss = train_loss_sum / max(1, n_batches)
 
-            # ---- Train metrics
             train_eval = evaluate_reconstruction(
-                model,
-                train_loader,
-                device,
-                variant="noisy_latent",
-                noise_std=noise_std,
-                latent_noise=True,
-                max_batches=20,
+                model, train_eval_loader, device,
+                variant="clean", noise_std=0.0, latent_noise=False, noise_seed=1234
             )
-
-            # ---- Validation
             val_eval = evaluate_reconstruction(
-                model,
-                val_loader,
-                device,
-                variant="noisy_latent",
-                noise_std=noise_std,
-                latent_noise=True,
+                model, val_loader, device,
+                variant="clean", noise_std=0.0, latent_noise=False, noise_seed=1234
+            )
+            val_eval_noisy = evaluate_reconstruction(
+                model, val_loader, device,
+                variant="noisy", noise_std=eval_noise_std, latent_noise=False, noise_seed=1234
             )
 
             scheduler.step(val_eval.loss)
@@ -220,11 +171,9 @@ def train_noisy_latent_model(
 
             metrics_hist["loss_train"].append(train_loss)
             metrics_hist["loss_val"].append(val_eval.loss)
-
             metrics_hist["mse_train"].append(train_eval.mse)
             metrics_hist["psnr_train"].append(train_eval.psnr)
             metrics_hist["ssim_train"].append(train_eval.ssim)
-
             metrics_hist["mse_val"].append(val_eval.mse)
             metrics_hist["psnr_val"].append(val_eval.psnr)
             metrics_hist["ssim_val"].append(val_eval.ssim)
@@ -233,6 +182,7 @@ def train_noisy_latent_model(
                 epoch,
                 train_loss, train_eval.mse, train_eval.psnr, train_eval.ssim,
                 val_eval.loss, val_eval.mse, val_eval.psnr, val_eval.ssim,
+                val_eval_noisy.mse, val_eval_noisy.psnr, val_eval_noisy.ssim,
             ])
             csv_f.flush()
 
@@ -247,29 +197,31 @@ def train_noisy_latent_model(
                 logger.info(
                     f"Epoch {epoch}/{epochs} | "
                     f"train_loss={train_loss:.6f} | "
-                    f"val_loss={val_eval.loss:.6f} | "
-                    f"PSNR={val_eval.psnr:.2f} | "
-                    f"SSIM={val_eval.ssim:.4f} | "
+                    f"val_clean_loss={val_eval.loss:.6f} | "
+                    f"val_clean_psnr={val_eval.psnr:.2f} | "
+                    f"val_clean_ssim={val_eval.ssim:.4f} | "
+                    f"val_noisy_psnr={val_eval_noisy.psnr:.2f} | "
+                    f"val_noisy_ssim={val_eval_noisy.ssim:.4f} | "
                     f"lr={current_lr:.6e} | "
-                    f"noise_std={noise_std:.4f}"
+                    f"latent_noise_std={noise_std:.4f}"
                 )
 
             if log_wandb:
                 wandb.log({
                     "epoch": epoch,
                     "lr": current_lr,
-                    "noise_std": noise_std,
-
+                    "latent_noise_std": noise_std,
                     "train/loss": train_loss,
                     "train/mse": train_eval.mse,
                     "train/psnr": train_eval.psnr,
                     "train/ssim": train_eval.ssim,
-
-                    "val/loss": val_eval.loss,
-                    "val/mse": val_eval.mse,
-                    "val/psnr": val_eval.psnr,
-                    "val/ssim": val_eval.ssim,
-
+                    "val_clean/loss": val_eval.loss,
+                    "val_clean/mse": val_eval.mse,
+                    "val_clean/psnr": val_eval.psnr,
+                    "val_clean/ssim": val_eval.ssim,
+                    "val_noisy/mse": val_eval_noisy.mse,
+                    "val_noisy/psnr": val_eval_noisy.psnr,
+                    "val_noisy/ssim": val_eval_noisy.ssim,
                     "best/val_loss": best_val,
                     "best/epoch": best_epoch,
                 })
@@ -287,26 +239,12 @@ def train_noisy_latent_model(
                 save_path=image_path,
                 num_images=8,
                 add_noise=False,
-                latent_noise=True,
-                noise_std=noise_std,
+                latent_noise=False,
+                noise_std=0.0,
             )
 
             if log_wandb:
-                wandb.log({
-                    "val/reconstructions": wandb.Image(
-                        image_path,
-                        caption=f"{model_name} | noisy_latent | epoch {epoch}"
-                    )
-                })
-
-                if is_best:
-                    wandb.run.summary["best_val_loss"] = val_eval.loss
-                    wandb.run.summary["best_val_mse"] = val_eval.mse
-                    wandb.run.summary["best_val_psnr"] = val_eval.psnr
-                    wandb.run.summary["best_val_ssim"] = val_eval.ssim
-                    wandb.run.summary["best_epoch"] = epoch
-                    wandb.run.summary["best_checkpoint_path"] = ckpt_path
-                    wandb.run.summary["noise_std"] = noise_std
+                wandb.log({"val/reconstructions": wandb.Image(image_path, caption=f"{model_name} | noisy_latent | epoch {epoch}")})
 
             if es.step(val_eval.loss):
                 if log:
@@ -319,6 +257,9 @@ def train_noisy_latent_model(
                 f.write(
                     f"epoch={i+1} "
                     f"train_loss={metrics_hist['loss_train'][i]:.6f} "
+                    f"train_mse={metrics_hist['mse_train'][i]:.6f} "
+                    f"train_psnr={metrics_hist['psnr_train'][i]:.6f} "
+                    f"train_ssim={metrics_hist['ssim_train'][i]:.6f} "
                     f"val_loss={metrics_hist['loss_val'][i]:.6f} "
                     f"val_mse={metrics_hist['mse_val'][i]:.6f} "
                     f"val_psnr={metrics_hist['psnr_val'][i]:.6f} "
@@ -327,7 +268,7 @@ def train_noisy_latent_model(
 
     finally:
         csv_f.close()
-        if log_wandb:
-            wandb.finish()
+        if run is not None:
+            run.finish()
 
     return ckpt_path
