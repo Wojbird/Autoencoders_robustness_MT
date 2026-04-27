@@ -102,22 +102,28 @@ def discover_models(base_dir: str, target: str) -> list:
     def is_real_model_file(p: Path) -> bool:
         parts = set(p.parts)
         return (
-                p.name.endswith(".py")
-                and not p.name.endswith("_base.py")
-                and p.name != "__init__.py"
-                and "test" not in parts
-                and "junk_folder" not in parts
+            p.name.endswith(".py")
+            and not p.name.endswith("_base.py")
+            and p.name != "__init__.py"
+            and "junk_folder" not in parts
         )
 
+    def is_non_test_model_file(p: Path) -> bool:
+        return is_real_model_file(p) and "test" not in set(p.parts)
+
+    # all -> bez modeli testowych
     if target == "all":
-        return [p for p in base.rglob("*.py") if is_real_model_file(p)]
+        return [p for p in base.rglob("*.py") if is_non_test_model_file(p)]
 
-    potential_file = [p for p in base.rglob(f"{target}.py") if is_real_model_file(p)]
-    if potential_file:
-        return potential_file
+    # najpierw szukaj dokładnego pliku po nazwie, także w models/test
+    exact_matches = [p for p in base.rglob(f"{target}.py") if is_real_model_file(p)]
+    if exact_matches:
+        return exact_matches
 
-    if (base / target).is_dir():
-        return [p for p in (base / target).glob("*.py") if is_real_model_file(p)]
+    # grupa katalogu, np. conv, residual, unet, adversarial, vqv
+    candidate_dir = base / target
+    if candidate_dir.is_dir():
+        return [p for p in candidate_dir.glob("*.py") if is_real_model_file(p)]
 
     print(f"Error: Could not find model '{target}' in {base_dir}")
     sys.exit(1)
