@@ -66,9 +66,11 @@ def evaluate_reconstruction(
     max_batches: Optional[int] = None,
     noise_seed: Optional[int] = None,
 ) -> EvalResult:
+    if variant not in {"clean", "noisy", "noisy_latent"}:
+        raise ValueError("variant must be one of: 'clean', 'noisy', 'noisy_latent'.")
+
     model.eval()
     loss_fn = nn.MSELoss()
-
     mse_metric, psnr_metric, ssim_metric = make_metrics(device)
 
     loss_sum = 0.0
@@ -143,7 +145,7 @@ def evaluate_model(
     results_dir: Optional[str] = None,
     noise_seed: Optional[int] = None,
 ) -> Dict[str, float]:
-    latent = (variant == "noisy_latent")
+    latent = variant == "noisy_latent"
     res = evaluate_reconstruction(
         model,
         dataloader,
