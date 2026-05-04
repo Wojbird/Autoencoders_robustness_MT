@@ -22,51 +22,20 @@ from data.data_setter import get_subnet_datasets, get_imagenet_datasets
 def parse_args():
     parser = argparse.ArgumentParser(description="Autoencoder Robustness Framework")
 
-    parser.add_argument(
-        "--mode",
-        choices=["train", "test", "train_test"],
-        required=True,
-        help="Operation mode"
-    )
-    parser.add_argument(
-        "--model",
-        required=True,
-        help="Model name, group or 'all'"
-    )
-    parser.add_argument(
-        "--type",
-        choices=["clean", "noisy", "noisy_latent", "all"],
-        default="clean",
-        help="Training/input variant"
-    )
-    parser.add_argument(
-        "--input",
-        choices=["subset", "full"],
-        default="subset",
-        help="Dataset source"
-    )
+    parser.add_argument("--mode", choices=["train", "test", "train_test"], required=True)
+    parser.add_argument("--model", required=True)
+    parser.add_argument("--type", choices=["clean", "noisy", "noisy_latent", "all"], default="clean")
+    parser.add_argument("--input", choices=["subset", "full"], default="subset")
     parser.add_argument(
         "--eval_on",
-        choices=["clean", "noisy", "all"],
+        choices=["clean", "noisy", "noisy_latent", "all"],
         default="all",
         help="Evaluation condition used in test mode."
     )
-    parser.add_argument(
-        "--log",
-        action="store_true",
-        help="Enable detailed logging"
-    )
-    parser.add_argument(
-        "--log_wandb",
-        action="store_true",
-        help="Enable logging to Weights & Biases"
-    )
-    parser.add_argument(
-        "--gpu",
-        type=int,
-        default=None,
-        help="CUDA GPU id to use"
-    )
+    parser.add_argument("--log", action="store_true")
+    parser.add_argument("--log_wandb", action="store_true")
+    parser.add_argument("--gpu", type=int, default=None)
+
     return parser.parse_args()
 
 
@@ -111,16 +80,13 @@ def discover_models(base_dir: str, target: str) -> list:
     def is_non_test_model_file(p: Path) -> bool:
         return is_real_model_file(p) and "test" not in set(p.parts)
 
-    # all -> bez modeli testowych
     if target == "all":
         return [p for p in base.rglob("*.py") if is_non_test_model_file(p)]
 
-    # najpierw szukaj dokładnego pliku po nazwie, także w models/test
     exact_matches = [p for p in base.rglob(f"{target}.py") if is_real_model_file(p)]
     if exact_matches:
         return exact_matches
 
-    # grupa katalogu, np. conv, residual, unet, adversarial, vqv
     candidate_dir = base / target
     if candidate_dir.is_dir():
         return [p for p in candidate_dir.glob("*.py") if is_real_model_file(p)]
@@ -144,18 +110,34 @@ def import_model(module_path: Path):
     return model_class, config_path
 
 
+def is_vq_config(cfg: dict) -> bool:
+    return str(cfg.get("family", "")).lower() == "vqv"
+
+
 def run(mode, model_path: Path, input_type, dataset_type, log, log_wandb, gpu_id=None, eval_on="all"):
+    model_class, config_path = import_model(model_path)
+    cfg = load_config(config_path)
+
     if input_type == "all":
-        for variant in ["clean", "noisy", "noisy_latent"]:
+        variants = ["clean", "noisy", "noisy_latent"]
+        if is_vq_config(cfg):
+            variants = ["clean", "noisy"]
+
+        for variant in variants:
             print(f"\n--- Running {mode} for input type: {variant} ---")
             run(mode, model_path, variant, dataset_type, log, log_wandb, gpu_id=gpu_id, eval_on=eval_on)
         return
 
-    model_class, config_path = import_model(model_path)
-    cfg = load_config(config_path)
+    if input_type == "noisy_latent" and is_vq_config(cfg):
+        print(f"Skipping noisy_latent for VQ model: {cfg.get('name', model_path.stem)}")
+        return
 
     model_name = str(cfg.get("name", model_path.stem))
-    train_noise_std = float(cfg.get("noise_latent", cfg.get("noise_std", 0.0))) if input_type == "noisy_latent" else float(cfg.get("noise_std", 0.0))
+    train_noise_std = (
+        float(cfg.get("noise_latent", cfg.get("noise_std", 0.0)))
+        if input_type == "noisy_latent"
+        else float(cfg.get("noise_std", 0.0))
+    )
 
     results_dir = os.path.join("results", model_name, dataset_type, input_type)
     os.makedirs(results_dir, exist_ok=True)
@@ -209,17 +191,24 @@ def run(mode, model_path: Path, input_type, dataset_type, log, log_wandb, gpu_id
             )
 
         device = get_device(gpu_id)
+
         try:
             model = model_class(cfg).to(device)
         except TypeError:
             model = model_class().to(device)
 
         state = torch.load(ckpt_path, map_location=device)
+        if isinstance(state, dict) and "model_state_dict" in state:
+            state = state["model_state_dict"]
         model.load_state_dict(state)
 
         val_loader = build_val_loader(cfg, dataset_type)
+
         eval_noise_std = float(cfg.get("eval_noise_std", cfg.get("noise_std", train_noise_std)))
-        eval_variants = ["clean", "noisy"] if eval_on == "all" else [eval_on]
+        eval_variants = ["clean", "noisy", "noisy_latent"] if eval_on == "all" else [eval_on]
+
+        if is_vq_config(cfg):
+            eval_variants = [v for v in eval_variants if v != "noisy_latent"]
 
         for eval_variant in eval_variants:
             test_dir = os.path.join(results_dir, "test", f"{eval_variant}_eval")

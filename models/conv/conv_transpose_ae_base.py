@@ -53,7 +53,7 @@ class ConvTransposeAEBase(nn.Module):
     For image_size=224:
         [B, latent_channels, 7, 7]
 
-    This version intentionally removes fc_enc/fc_dec to preserve spatial locality.
+    This version intentionally removes fc_enc/fc_dec.
     """
 
     def __init__(self, config: dict) -> None:
@@ -79,7 +79,7 @@ class ConvTransposeAEBase(nn.Module):
         self.latent_size = latent_channels * self.latent_hw * self.latent_hw
 
         self.encoder = nn.Sequential(
-            _conv_block(image_channels, c1, stride=1, dropout=0.0),
+            _conv_block(image_channels, c1, stride=2, dropout=0.0),
             _conv_block(c1, c2, stride=2, dropout=0.0),
             _conv_block(c2, c3, stride=2, dropout=0.0),
             _conv_block(c3, c4, stride=2, dropout=dropout),
@@ -116,13 +116,11 @@ class ConvTransposeAEBase(nn.Module):
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
         x = self.encoder(x)
-        z = self.to_latent(x)
-        return z
+        return self.to_latent(x)
 
     def decode(self, z: torch.Tensor) -> torch.Tensor:
         x = self.from_latent(z)
-        x = self.decoder(x)
-        return x
+        return self.decoder(x)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         z = self.encode(x)
