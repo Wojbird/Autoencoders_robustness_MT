@@ -1,35 +1,29 @@
 {
   "name": "adversarial_ae_32",
   "family": "adversarial",
-
   "image_size": 224,
   "image_channels": 3,
-
   "latent_channels": 32,
   "latent_spatial_size": 7,
   "latent_size": 1568,
-
-  "encoder_channels": [18, 28, 40, 56, 72],
-
+  "encoder_channels": [16, 22, 30, 42, 54],
+  "disc_channels": [32, 64, 96, 128],
+  "disc_learning_rate": 0.0001,
+  "disc_weight_decay": 0.00001,
+  "adversarial_weight": 0.001,
   "dropout": 0.2,
-
   "batch_size": 32,
   "num_workers": 8,
-
   "epochs": 150,
-
   "learning_rate": 0.00005,
   "weight_decay": 0.00005,
-
   "noise_std": 0.05,
-  "noise_latent": 0.002,
+  "noise_latent": 0.05,
+  "latent_noise_relative": true,
   "eval_noise_std": 0.05,
-
   "train_eval_fraction": 0.1,
   "val_subset_fraction": 1.0,
-
   "early_stopping_patience": 15,
-
   "scheduler_factor": 0.5,
   "scheduler_patience": 7,
   "scheduler_min_lr": 0.000001,

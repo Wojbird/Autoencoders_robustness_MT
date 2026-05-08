@@ -2,31 +2,14 @@ import importlib
 import json
 
 
-MODELS = [
-    "conv.conv_transpose_ae_64",
-    "conv.conv_transpose_ae_128",
-    "conv.conv_transpose_ae_256",
-    "conv.conv_transpose_ae_512",
+SIZES = [16, 32, 64, 128, 256, 512, 1024]
 
-    "residual.residual_ae_64",
-    "residual.residual_ae_128",
-    "residual.residual_ae_256",
-    "residual.residual_ae_512",
-
-    "unet.unet_ae_64",
-    "unet.unet_ae_128",
-    "unet.unet_ae_256",
-    "unet.unet_ae_512",
-
-    "adversarial.adversarial_ae_64",
-    "adversarial.adversarial_ae_128",
-    "adversarial.adversarial_ae_256",
-    "adversarial.adversarial_ae_512",
-
-    "vqv.vq_v_ae_64",
-    "vqv.vq_v_ae_128",
-    "vqv.vq_v_ae_256",
-    "vqv.vq_v_ae_512",
+MODEL_PATTERNS = [
+    "conv.conv_transpose_ae_{size}",
+    "residual.residual_ae_{size}",
+    "unet.unet_ae_{size}",
+    "adversarial.adversarial_ae_{size}",
+    "vqv.vq_v_ae_{size}",
 ]
 
 
@@ -40,40 +23,55 @@ def compression_ratio(image_size, image_channels, latent_channels):
     return input_size / latent_size
 
 
-print("=" * 120)
+print("=" * 130)
 
-for model_path in MODELS:
-    module = importlib.import_module(f"models.{model_path}")
+for size in SIZES:
+    print(f"\nLATENT CHANNELS = {size}")
+    print("-" * 130)
 
-    model_class = module.model_class
-    config_path = module.config_path
+    rows = []
 
-    with open(config_path, "r", encoding="utf-8") as f:
-        cfg = json.load(f)
+    for pattern in MODEL_PATTERNS:
+        model_path = pattern.format(size=size)
+        module = importlib.import_module(f"models.{model_path}")
 
-    model = model_class(cfg)
+        model_class = module.model_class
+        config_path = module.config_path
 
-    total_params = count_params(model)
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
 
-    latent_channels = int(cfg.get("latent_channels", cfg.get("latent_dim")))
-    image_size = int(cfg["image_size"])
-    image_channels = int(cfg["image_channels"])
+        model = model_class(cfg)
 
-    latent_hw = image_size // 32
-    latent_size = latent_channels * latent_hw * latent_hw
+        total_params = count_params(model)
 
-    ratio = compression_ratio(
-        image_size=image_size,
-        image_channels=image_channels,
-        latent_channels=latent_channels,
-    )
+        latent_channels = int(cfg.get("latent_channels", cfg.get("latent_dim")))
+        image_size = int(cfg["image_size"])
+        image_channels = int(cfg["image_channels"])
 
-    print(
-        f"{cfg['name']:32} | "
-        f"params: {total_params:>12,} | "
-        f"latent: {latent_channels:>4} x {latent_hw} x {latent_hw} "
-        f"= {latent_size:>6,} | "
-        f"compression: {ratio:>6.2f}:1"
-    )
+        latent_hw = image_size // 32
+        latent_size = latent_channels * latent_hw * latent_hw
 
-print("=" * 120)
+        ratio = compression_ratio(
+            image_size=image_size,
+            image_channels=image_channels,
+            latent_channels=latent_channels,
+        )
+
+        rows.append((cfg["name"], total_params, latent_channels, latent_hw, latent_size, ratio))
+
+    max_params = max(r[1] for r in rows)
+
+    for name, total_params, latent_channels, latent_hw, latent_size, ratio in rows:
+        diff = 100.0 * (total_params - max_params) / max_params
+
+        print(
+            f"{name:32} | "
+            f"params: {total_params:>12,} | "
+            f"diff_vs_max: {diff:>7.2f}% | "
+            f"latent: {latent_channels:>4} x {latent_hw} x {latent_hw} "
+            f"= {latent_size:>6,} | "
+            f"compression: {ratio:>7.2f}:1"
+        )
+
+print("\n" + "=" * 130)

@@ -34,25 +34,44 @@ def _assert_classic_autoencoder_only(model) -> None:
         )
 
 
-def _forward_noisy_latent(model, x: torch.Tensor, noise_std: float) -> torch.Tensor:
+def _add_latent_noise(z: torch.Tensor, noise_std: float, relative: bool = True) -> torch.Tensor:
+    if noise_std <= 0.0:
+        return z
+
+    noise = torch.randn_like(z)
+
+    if not relative:
+        return z + noise_std * noise
+
+    scale = (
+        z.detach()
+        .flatten(start_dim=1)
+        .std(dim=1, unbiased=False)
+        .view(-1, 1, 1, 1)
+        .clamp_min(1e-6)
+    )
+
+    return z + noise_std * scale * noise
+
+
+def _forward_noisy_latent(
+    model,
+    x: torch.Tensor,
+    noise_std: float,
+    relative: bool = True,
+) -> torch.Tensor:
     if hasattr(model, "encode") and callable(getattr(model, "encode")) and \
        hasattr(model, "decode") and callable(getattr(model, "decode")):
         z = model.encode(x)
         z = _unwrap_tensor(z)
-
-        if noise_std > 0.0:
-            z = z + noise_std * torch.randn_like(z)
-
+        z = _add_latent_noise(z, noise_std, relative=relative)
         out = model.decode(z)
         return _unwrap_tensor(out)
 
     if hasattr(model, "encoder") and hasattr(model, "decoder"):
         z = model.encoder(x)
         z = _unwrap_tensor(z)
-
-        if noise_std > 0.0:
-            z = z + noise_std * torch.randn_like(z)
-
+        z = _add_latent_noise(z, noise_std, relative=relative)
         out = model.decoder(z)
         return _unwrap_tensor(out)
 
@@ -82,6 +101,7 @@ def train_noisy_latent_model(
     wd = float(cfg.get("weight_decay", 0.0))
 
     noise_std = float(cfg.get("noise_latent", cfg.get("noise_std", 0.0)))
+    latent_noise_relative = bool(cfg.get("latent_noise_relative", True))
     eval_input_noise_std = float(cfg.get("eval_noise_std", cfg.get("noise_std", 0.0)))
 
     val_fraction = float(cfg.get("val_subset_fraction", 1.0))
@@ -186,6 +206,7 @@ def train_noisy_latent_model(
                 "model_class": model_class.__name__,
                 "gpu_id": gpu_id,
                 "selection_metric": "val_latent_noisy_loss",
+                "latent_noise_relative": latent_noise_relative,
             },
         )
 
@@ -205,6 +226,7 @@ def train_noisy_latent_model(
                     model,
                     x,
                     noise_std=noise_std,
+                    relative=latent_noise_relative,
                 )
                 x_hat = torch.clamp(x_hat, 0.0, 1.0)
 
@@ -225,6 +247,7 @@ def train_noisy_latent_model(
                 noise_std=noise_std,
                 latent_noise=True,
                 noise_seed=1234,
+                latent_noise_relative=latent_noise_relative,
             )
 
             val_latent_noisy = evaluate_reconstruction(
@@ -235,6 +258,7 @@ def train_noisy_latent_model(
                 noise_std=noise_std,
                 latent_noise=True,
                 noise_seed=1234,
+                latent_noise_relative=latent_noise_relative,
             )
 
             val_clean = evaluate_reconstruction(
@@ -245,6 +269,7 @@ def train_noisy_latent_model(
                 noise_std=0.0,
                 latent_noise=False,
                 noise_seed=1234,
+                latent_noise_relative=latent_noise_relative,
             )
 
             val_input_noisy = evaluate_reconstruction(
@@ -255,6 +280,7 @@ def train_noisy_latent_model(
                 noise_std=eval_input_noise_std,
                 latent_noise=False,
                 noise_seed=1234,
+                latent_noise_relative=latent_noise_relative,
             )
 
             scheduler.step(val_latent_noisy.loss)

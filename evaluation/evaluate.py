@@ -24,27 +24,52 @@ def _randn_like_seeded(x: torch.Tensor, seed: Optional[int], offset: int) -> tor
         return torch.randn_like(x)
 
 
+def _add_latent_noise(
+    z: torch.Tensor,
+    noise_std: float,
+    noise_seed: Optional[int],
+    batch_idx: int,
+    relative: bool = True,
+) -> torch.Tensor:
+    if noise_std <= 0:
+        return z
+
+    noise = _randn_like_seeded(z, noise_seed, batch_idx)
+
+    if not relative:
+        return z + noise_std * noise
+
+    scale = (
+        z.detach()
+        .flatten(start_dim=1)
+        .std(dim=1, unbiased=False)
+        .view(-1, 1, 1, 1)
+        .clamp_min(1e-6)
+    )
+
+    return z + noise_std * scale * noise
+
+
 def _forward_with_latent_noise(
     model: nn.Module,
     x: torch.Tensor,
     noise_std: float,
     noise_seed: Optional[int] = None,
     batch_idx: int = 0,
+    relative: bool = True,
 ) -> torch.Tensor:
     if hasattr(model, "encode") and callable(getattr(model, "encode")) and \
        hasattr(model, "decode") and callable(getattr(model, "decode")):
         z = model.encode(x)
         z = _unwrap_tensor(z)
-        noise = _randn_like_seeded(z, noise_seed, batch_idx)
-        z_noisy = z + noise_std * noise if noise_std > 0 else z
+        z_noisy = _add_latent_noise(z, noise_std, noise_seed, batch_idx, relative=relative)
         x_hat = model.decode(z_noisy)
         return _unwrap_tensor(x_hat)
 
     if hasattr(model, "encoder") and hasattr(model, "decoder"):
         z = model.encoder(x)
         z = _unwrap_tensor(z)
-        noise = _randn_like_seeded(z, noise_seed, batch_idx)
-        z_noisy = z + noise_std * noise if noise_std > 0 else z
+        z_noisy = _add_latent_noise(z, noise_std, noise_seed, batch_idx, relative=relative)
         x_hat = model.decoder(z_noisy)
         return _unwrap_tensor(x_hat)
 
@@ -65,6 +90,7 @@ def evaluate_reconstruction(
     latent_noise: bool = False,
     max_batches: Optional[int] = None,
     noise_seed: Optional[int] = None,
+    latent_noise_relative: bool = True,
 ) -> EvalResult:
     if variant not in {"clean", "noisy", "noisy_latent"}:
         raise ValueError("variant must be one of: 'clean', 'noisy', 'noisy_latent'.")
@@ -89,6 +115,7 @@ def evaluate_reconstruction(
                 noise_std=noise_std,
                 noise_seed=noise_seed,
                 batch_idx=i,
+                relative=latent_noise_relative,
             )
         else:
             if variant == "noisy" and noise_std > 0:
@@ -154,6 +181,7 @@ def evaluate_model(
         noise_std=noise_std,
         latent_noise=latent,
         noise_seed=noise_seed,
+        latent_noise_relative=True,
     )
 
     out = {

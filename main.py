@@ -70,6 +70,16 @@ def build_val_loader(cfg: dict, dataset_type: str):
     )
 
 
+MAIN_EXPERIMENT_SIZES = {16, 32, 64, 128, 256}
+
+
+def _model_size_from_stem(stem: str) -> int | None:
+    suffix = stem.split("_")[-1]
+    if suffix.isdigit():
+        return int(suffix)
+    return None
+
+
 def discover_models(base_dir: str, target: str) -> list:
     base = Path(base_dir)
 
@@ -82,11 +92,17 @@ def discover_models(base_dir: str, target: str) -> list:
             and "junk_folder" not in parts
         )
 
-    def is_non_test_model_file(p: Path) -> bool:
-        return is_real_model_file(p) and "test" not in set(p.parts)
+    def is_main_experiment_model_file(p: Path) -> bool:
+        if not is_real_model_file(p):
+            return False
+        if "test" in set(p.parts):
+            return False
+
+        size = _model_size_from_stem(p.stem)
+        return size in MAIN_EXPERIMENT_SIZES
 
     if target == "all":
-        return [p for p in base.rglob("*.py") if is_non_test_model_file(p)]
+        return [p for p in base.rglob("*.py") if is_main_experiment_model_file(p)]
 
     exact_matches = [p for p in base.rglob(f"{target}.py") if is_real_model_file(p)]
     if exact_matches:
@@ -94,7 +110,7 @@ def discover_models(base_dir: str, target: str) -> list:
 
     candidate_dir = base / target
     if candidate_dir.is_dir():
-        return [p for p in candidate_dir.glob("*.py") if is_real_model_file(p)]
+        return [p for p in candidate_dir.glob("*.py") if is_main_experiment_model_file(p)]
 
     print(f"Error: Could not find model '{target}' in {base_dir}")
     sys.exit(1)
