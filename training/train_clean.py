@@ -133,6 +133,7 @@ def train_clean_model(
     run = None
     if log_wandb:
         run = wandb.init(
+            settings=wandb.Settings(init_timeout=180, start_method="thread"),
             project="autoencoders-robustness",
             name=f"{model_name}_{dataset_type}_clean",
             config={

@@ -13,7 +13,7 @@
   "adversarial_weight": 0.001,
   "dropout": 0.2,
   "batch_size": 32,
-  "num_workers": 28,
+  "num_workers": 8,
   "epochs": 150,
   "learning_rate": 0.00005,
   "weight_decay": 0.00005,

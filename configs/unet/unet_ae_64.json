@@ -9,7 +9,7 @@
   "encoder_channels": [12, 20, 28, 40, 52],
   "dropout": 0.2,
   "batch_size": 32,
-  "num_workers": 28,
+  "num_workers": 8,
   "epochs": 150,
   "learning_rate": 0.00005,
   "weight_decay": 0.00005,
