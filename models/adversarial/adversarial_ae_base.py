@@ -17,18 +17,46 @@ class ImageDiscriminator(nn.Module):
         c1, c2, c3, c4 = map(int, disc_channels)
 
         self.net = nn.Sequential(
-            nn.Conv2d(image_channels, c1, kernel_size=4, stride=2, padding=1, bias=False),
+            nn.Conv2d(
+                image_channels,
+                c1,
+                kernel_size=4,
+                stride=2,
+                padding=1,
+                bias=False,
+            ),
             nn.LeakyReLU(0.2, inplace=True),
 
-            nn.Conv2d(c1, c2, kernel_size=4, stride=2, padding=1, bias=False),
+            nn.Conv2d(
+                c1,
+                c2,
+                kernel_size=4,
+                stride=2,
+                padding=1,
+                bias=False,
+            ),
             nn.BatchNorm2d(c2),
             nn.LeakyReLU(0.2, inplace=True),
 
-            nn.Conv2d(c2, c3, kernel_size=4, stride=2, padding=1, bias=False),
+            nn.Conv2d(
+                c2,
+                c3,
+                kernel_size=4,
+                stride=2,
+                padding=1,
+                bias=False,
+            ),
             nn.BatchNorm2d(c3),
             nn.LeakyReLU(0.2, inplace=True),
 
-            nn.Conv2d(c3, c4, kernel_size=4, stride=2, padding=1, bias=False),
+            nn.Conv2d(
+                c3,
+                c4,
+                kernel_size=4,
+                stride=2,
+                padding=1,
+                bias=False,
+            ),
             nn.BatchNorm2d(c4),
             nn.LeakyReLU(0.2, inplace=True),
 
@@ -42,6 +70,15 @@ class ImageDiscriminator(nn.Module):
 
 
 class AdversarialAEBase(UNetAEBase):
+    """
+    Adversarial autoencoder generator based on UNetAEBase without skip connections.
+
+    The discriminator is used only during adversarial training.
+    The reconstruction path remains:
+        image -> latent -> reconstruction
+    without encoder-decoder skip bypasses.
+    """
+
     discriminator_class = ImageDiscriminator
 
     def __init__(self, config: dict):
