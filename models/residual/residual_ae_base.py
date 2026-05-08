@@ -2,17 +2,29 @@ import torch
 import torch.nn as nn
 
 
+def _num_groups(channels: int) -> int:
+    for g in (8, 4, 2):
+        if channels % g == 0:
+            return g
+    return 1
+
+
+def _norm(channels: int) -> nn.GroupNorm:
+    return nn.GroupNorm(num_groups=_num_groups(channels), num_channels=channels)
+
+
 class ResBlock(nn.Module):
     def __init__(self, channels: int, dropout: float = 0.0):
         super().__init__()
 
         layers = [
             nn.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(channels),
+            _norm(channels),
             nn.ReLU(inplace=True),
             nn.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(channels),
+            _norm(channels),
         ]
+
         if dropout > 0.0:
             layers.append(nn.Dropout2d(dropout))
 
@@ -36,14 +48,13 @@ class DownBlock(nn.Module):
                 padding=1,
                 bias=False,
             ),
-            nn.BatchNorm2d(out_channels),
+            _norm(out_channels),
             nn.ReLU(inplace=True),
         )
         self.res = ResBlock(out_channels, dropout=dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.down(x)
-        return self.res(x)
+        return self.res(self.down(x))
 
 
 class UpBlock(nn.Module):
@@ -60,27 +71,25 @@ class UpBlock(nn.Module):
                 output_padding=1,
                 bias=False,
             ),
-            nn.BatchNorm2d(out_channels),
+            _norm(out_channels),
             nn.ReLU(inplace=True),
         )
         self.res = ResBlock(out_channels, dropout=dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.up(x)
-        return self.res(x)
+        return self.res(self.up(x))
 
 
 class ResidualAEBase(nn.Module):
     """
-    Fully-convolutional residual autoencoder.
+    Fully-convolutional residual autoencoder without fc bottleneck
+    and without skip connections.
 
-    Latent representation:
+    Latent:
         [B, latent_channels, image_size / 32, image_size / 32]
 
     For image_size=224:
         [B, latent_channels, 7, 7]
-
-    This version intentionally removes fc_enc/fc_dec.
     """
 
     def __init__(self, config: dict):
@@ -111,10 +120,10 @@ class ResidualAEBase(nn.Module):
 
         self.stem = nn.Sequential(
             nn.Conv2d(image_channels, s1, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(s1),
+            _norm(s1),
             nn.ReLU(inplace=True),
             nn.Conv2d(s1, s2, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(s2),
+            _norm(s2),
             nn.ReLU(inplace=True),
         )
 
@@ -126,13 +135,13 @@ class ResidualAEBase(nn.Module):
 
         self.to_latent = nn.Sequential(
             nn.Conv2d(c5, latent_channels, kernel_size=1, bias=False),
-            nn.BatchNorm2d(latent_channels),
+            _norm(latent_channels),
             nn.ReLU(inplace=True),
         )
 
         self.from_latent = nn.Sequential(
             nn.Conv2d(latent_channels, c5, kernel_size=1, bias=False),
-            nn.BatchNorm2d(c5),
+            _norm(c5),
             nn.ReLU(inplace=True),
         )
 
@@ -144,7 +153,7 @@ class ResidualAEBase(nn.Module):
 
         self.final = nn.Sequential(
             nn.Conv2d(s2, s1, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(s1),
+            _norm(s1),
             nn.ReLU(inplace=True),
             nn.Conv2d(s1, image_channels, kernel_size=3, padding=1),
             nn.Sigmoid(),
@@ -157,8 +166,7 @@ class ResidualAEBase(nn.Module):
         x = self.enc3(x)
         x = self.enc4(x)
         x = self.enc5(x)
-        z = self.to_latent(x)
-        return z
+        return self.to_latent(x)
 
     def decode(self, z: torch.Tensor) -> torch.Tensor:
         x = self.from_latent(z)
@@ -167,9 +175,7 @@ class ResidualAEBase(nn.Module):
         x = self.dec3(x)
         x = self.dec4(x)
         x = self.dec5(x)
-        x = self.final(x)
-        return x
+        return self.final(x)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        z = self.encode(x)
-        return self.decode(z)
+        return self.decode(self.encode(x))

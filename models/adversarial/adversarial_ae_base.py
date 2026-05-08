@@ -4,6 +4,17 @@ import torch.nn as nn
 from models.unet.unet_ae_base import UNetAEBase
 
 
+def _num_groups(channels: int) -> int:
+    for g in (8, 4, 2):
+        if channels % g == 0:
+            return g
+    return 1
+
+
+def _norm(channels: int) -> nn.GroupNorm:
+    return nn.GroupNorm(num_groups=_num_groups(channels), num_channels=channels)
+
+
 class ImageDiscriminator(nn.Module):
     def __init__(self, config: dict):
         super().__init__()
@@ -20,7 +31,7 @@ class ImageDiscriminator(nn.Module):
             nn.Conv2d(
                 image_channels,
                 c1,
-                kernel_size=4,
+                kernel_size=3,
                 stride=2,
                 padding=1,
                 bias=False,
@@ -30,34 +41,34 @@ class ImageDiscriminator(nn.Module):
             nn.Conv2d(
                 c1,
                 c2,
-                kernel_size=4,
+                kernel_size=3,
                 stride=2,
                 padding=1,
                 bias=False,
             ),
-            nn.BatchNorm2d(c2),
+            _norm(c2),
             nn.LeakyReLU(0.2, inplace=True),
 
             nn.Conv2d(
                 c2,
                 c3,
-                kernel_size=4,
+                kernel_size=3,
                 stride=2,
                 padding=1,
                 bias=False,
             ),
-            nn.BatchNorm2d(c3),
+            _norm(c3),
             nn.LeakyReLU(0.2, inplace=True),
 
             nn.Conv2d(
                 c3,
                 c4,
-                kernel_size=4,
+                kernel_size=3,
                 stride=2,
                 padding=1,
                 bias=False,
             ),
-            nn.BatchNorm2d(c4),
+            _norm(c4),
             nn.LeakyReLU(0.2, inplace=True),
 
             nn.AdaptiveAvgPool2d(1),
@@ -72,11 +83,6 @@ class ImageDiscriminator(nn.Module):
 class AdversarialAEBase(UNetAEBase):
     """
     Adversarial autoencoder generator based on UNetAEBase without skip connections.
-
-    The discriminator is used only during adversarial training.
-    The reconstruction path remains:
-        image -> latent -> reconstruction
-    without encoder-decoder skip bypasses.
     """
 
     discriminator_class = ImageDiscriminator

@@ -2,58 +2,79 @@ import torch
 import torch.nn as nn
 
 
+def _num_groups(channels: int) -> int:
+    for g in (8, 4, 2):
+        if channels % g == 0:
+            return g
+    return 1
+
+
+def _norm(channels: int) -> nn.GroupNorm:
+    return nn.GroupNorm(num_groups=_num_groups(channels), num_channels=channels)
+
+
 def _conv_block(
-    in_ch: int,
-    out_ch: int,
+    in_channels: int,
+    out_channels: int,
     *,
     stride: int = 1,
     dropout: float = 0.0,
 ) -> nn.Sequential:
     layers = [
-        nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=stride, padding=1, bias=False),
-        nn.BatchNorm2d(out_ch),
+        nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=3,
+            stride=stride,
+            padding=1,
+            bias=False,
+        ),
+        _norm(out_channels),
         nn.LeakyReLU(0.1, inplace=True),
     ]
+
     if dropout > 0.0:
         layers.append(nn.Dropout2d(dropout))
+
     return nn.Sequential(*layers)
 
 
 def _deconv_block(
-    in_ch: int,
-    out_ch: int,
+    in_channels: int,
+    out_channels: int,
     *,
     dropout: float = 0.0,
 ) -> nn.Sequential:
     layers = [
         nn.ConvTranspose2d(
-            in_ch,
-            out_ch,
+            in_channels,
+            out_channels,
             kernel_size=3,
             stride=2,
             padding=1,
             output_padding=1,
             bias=False,
         ),
-        nn.BatchNorm2d(out_ch),
+        _norm(out_channels),
         nn.LeakyReLU(0.1, inplace=True),
     ]
+
     if dropout > 0.0:
         layers.append(nn.Dropout2d(dropout))
+
     return nn.Sequential(*layers)
 
 
 class ConvTransposeAEBase(nn.Module):
     """
-    Fully-convolutional convolutional autoencoder.
+    Fully-convolutional convolutional-transpose autoencoder without fc bottleneck
+    and without skip connections.
 
-    Latent representation:
+    Latent:
         [B, latent_channels, image_size / 32, image_size / 32]
 
     For image_size=224:
         [B, latent_channels, 7, 7]
-
-    This version intentionally removes fc_enc/fc_dec.
     """
 
     def __init__(self, config: dict) -> None:
@@ -64,6 +85,7 @@ class ConvTransposeAEBase(nn.Module):
         latent_channels = int(config.get("latent_channels", config.get("latent_dim")))
 
         encoder_channels = list(config["encoder_channels"])
+
         if len(encoder_channels) != 5:
             raise ValueError("config['encoder_channels'] must contain exactly 5 values.")
 
@@ -88,13 +110,13 @@ class ConvTransposeAEBase(nn.Module):
 
         self.to_latent = nn.Sequential(
             nn.Conv2d(c5, latent_channels, kernel_size=1, bias=False),
-            nn.BatchNorm2d(latent_channels),
+            _norm(latent_channels),
             nn.LeakyReLU(0.1, inplace=True),
         )
 
         self.from_latent = nn.Sequential(
             nn.Conv2d(latent_channels, c5, kernel_size=1, bias=False),
-            nn.BatchNorm2d(c5),
+            _norm(c5),
             nn.LeakyReLU(0.1, inplace=True),
         )
 
@@ -123,5 +145,4 @@ class ConvTransposeAEBase(nn.Module):
         return self.decoder(x)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        z = self.encode(x)
-        return self.decode(z)
+        return self.decode(self.encode(x))

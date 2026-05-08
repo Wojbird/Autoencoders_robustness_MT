@@ -3,9 +3,21 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+def _num_groups(channels: int) -> int:
+    for g in (8, 4, 2):
+        if channels % g == 0:
+            return g
+    return 1
+
+
+def _norm(channels: int) -> nn.GroupNorm:
+    return nn.GroupNorm(num_groups=_num_groups(channels), num_channels=channels)
+
+
 class VectorQuantizer(nn.Module):
     def __init__(self, num_embeddings: int, embedding_dim: int, commitment_cost: float = 0.25):
         super().__init__()
+
         self.embedding_dim = embedding_dim
         self.num_embeddings = num_embeddings
         self.commitment_cost = commitment_cost
@@ -18,28 +30,36 @@ class VectorQuantizer(nn.Module):
         flat_z = z_perm.view(-1, self.embedding_dim)
 
         distances = (
-            flat_z.pow(2).sum(1, keepdim=True)
+            flat_z.pow(2).sum(dim=1, keepdim=True)
             - 2 * flat_z @ self.embeddings.weight.t()
-            + self.embeddings.weight.pow(2).sum(1)
+            + self.embeddings.weight.pow(2).sum(dim=1)
         )
 
         encoding_indices = torch.argmin(distances, dim=1).unsqueeze(1)
+
         encodings = torch.zeros(
             encoding_indices.size(0),
             self.num_embeddings,
             device=z.device,
-            dtype=z.dtype
+            dtype=z.dtype,
         )
         encodings.scatter_(1, encoding_indices, 1)
 
         quantized = encodings @ self.embeddings.weight
         quantized = quantized.view(z_perm.shape)
 
-        commitment_loss = self.commitment_cost * F.mse_loss(quantized.detach(), z_perm)
-        codebook_loss = F.mse_loss(quantized, z_perm.detach())
+        commitment_loss = self.commitment_cost * F.mse_loss(
+            quantized.detach(),
+            z_perm,
+        )
+        codebook_loss = F.mse_loss(
+            quantized,
+            z_perm.detach(),
+        )
         loss = commitment_loss + codebook_loss
 
         quantized = z_perm + (quantized - z_perm).detach()
+
         return quantized.permute(0, 3, 1, 2).contiguous(), loss
 
 
@@ -61,7 +81,7 @@ def make_stage(
                 padding=1,
                 bias=False,
             ),
-            nn.BatchNorm2d(out_channels),
+            _norm(out_channels),
             nn.LeakyReLU(0.1, inplace=True),
         ]
     else:
@@ -75,7 +95,7 @@ def make_stage(
                 output_padding=1,
                 bias=False,
             ),
-            nn.BatchNorm2d(out_channels),
+            _norm(out_channels),
             nn.LeakyReLU(0.1, inplace=True),
         ]
 
@@ -86,6 +106,16 @@ def make_stage(
 
 
 class VQVAEBase(nn.Module):
+    """
+    Lightweight VQ-VAE.
+
+    Latent before quantization:
+        [B, latent_dim, image_size / 32, image_size / 32]
+
+    For image_size=224:
+        [B, latent_dim, 7, 7]
+    """
+
     def __init__(self, config: dict):
         super().__init__()
 
@@ -111,13 +141,19 @@ class VQVAEBase(nn.Module):
         s1, s2 = map(int, stem_channels)
         c1, c2, c3, c4 = map(int, encoder_channels)
 
+        self.image_size = image_size
+        self.latent_dim = latent_dim
+        self.latent_channels = latent_dim
+        self.latent_hw = image_size // 32
+        self.latent_size = latent_dim * self.latent_hw * self.latent_hw
+
         self.pre_encoder = nn.Sequential(
             nn.Conv2d(image_channels, s1, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(s1),
+            _norm(s1),
             nn.LeakyReLU(0.1, inplace=True),
 
             nn.Conv2d(s1, s2, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(s2),
+            _norm(s2),
             nn.LeakyReLU(0.1, inplace=True),
         )
 
@@ -136,14 +172,16 @@ class VQVAEBase(nn.Module):
             commitment_cost=commitment_cost,
         )
 
-        self.dec1 = make_stage(bottleneck_channels, c4, transpose=True, use_dropout=False, dropout_p=dropout)
+        self.dec1 = make_stage(bottleneck_channels, c4, transpose=True, use_dropout=True, dropout_p=dropout)
         self.dec2 = make_stage(c4, c3, transpose=True, use_dropout=True, dropout_p=dropout)
         self.dec3 = make_stage(c3, c2, transpose=True, use_dropout=True, dropout_p=dropout)
         self.dec4 = make_stage(c2, c1, transpose=True, use_dropout=False, dropout_p=dropout)
         self.dec5 = make_stage(c1, s2, transpose=True, use_dropout=False, dropout_p=dropout)
 
-        self.final = nn.Conv2d(s2, image_channels, kernel_size=3, padding=1)
-        self.activation = nn.Sigmoid()
+        self.final = nn.Sequential(
+            nn.Conv2d(s2, image_channels, kernel_size=3, padding=1),
+            nn.Sigmoid(),
+        )
 
         self.vq_loss = None
 
@@ -169,7 +207,7 @@ class VQVAEBase(nn.Module):
         z = self.dec3(z)
         z = self.dec4(z)
         z = self.dec5(z)
-        return self.activation(self.final(z))
+        return self.final(z)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         z_q = self.encode(x)

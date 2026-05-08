@@ -35,7 +35,7 @@ def get_device(gpu_id: int | None = None):
 
 
 def setup_device(gpu_id: int | None = None):
-    torch.set_num_threads(4)
+    torch.set_num_threads(1)
     torch.backends.cudnn.benchmark = True
 
     if torch.cuda.is_available():
@@ -175,8 +175,7 @@ def save_images(
 
     pairs = []
     for i in range(images_shown):
-        pair = torch.stack([images_orig[i], images_recon[i]])
-        pairs.append(pair)
+        pairs.append(torch.stack([images_orig[i], images_recon[i]]))
 
     all_images = torch.cat(pairs, dim=0)
     grid = make_grid(all_images, nrow=2, padding=10)
