@@ -2,7 +2,7 @@ import importlib
 import json
 
 
-SIZES = [16, 32, 64, 128, 256, 512, 1024]
+SIZES = [16, 32, 64, 128, 256]
 
 MODEL_PATTERNS = [
     "conv.conv_transpose_ae_{size}",
