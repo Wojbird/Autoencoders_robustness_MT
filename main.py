@@ -1,5 +1,9 @@
 import json
 import os
+
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+
 import torch
 from torch.utils.data import DataLoader
 import argparse
@@ -8,9 +12,6 @@ import sys
 import logging
 from pathlib import Path
 import matplotlib
-
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
 
 torch.set_num_threads(1)
 

@@ -105,19 +105,44 @@ def _unwrap_tensor(x):
     return x
 
 
-def _forward_with_latent_noise(model, x, noise_std=0.0):
+def _add_latent_noise(z: torch.Tensor, noise_std: float, relative: bool = True) -> torch.Tensor:
+    if noise_std <= 0.0:
+        return z
+
+    noise = torch.randn_like(z)
+
+    if not relative:
+        return z + noise_std * noise
+
+    scale = (
+        z.detach()
+        .flatten(start_dim=1)
+        .std(dim=1, unbiased=False)
+        .view(-1, 1, 1, 1)
+        .clamp_min(1e-6)
+    )
+
+    return z + noise_std * scale * noise
+
+
+def _forward_with_latent_noise(
+    model,
+    x,
+    noise_std=0.0,
+    relative: bool = True,
+):
     if hasattr(model, "encode") and callable(getattr(model, "encode")) and \
        hasattr(model, "decode") and callable(getattr(model, "decode")):
         z = model.encode(x)
         z = _unwrap_tensor(z)
-        z_noisy = z + noise_std * torch.randn_like(z) if noise_std > 0 else z
+        z_noisy = _add_latent_noise(z, noise_std, relative=relative)
         out = model.decode(z_noisy)
         return _unwrap_tensor(out)
 
     if hasattr(model, "encoder") and hasattr(model, "decoder"):
         z = model.encoder(x)
         z = _unwrap_tensor(z)
-        z_noisy = z + noise_std * torch.randn_like(z) if noise_std > 0 else z
+        z_noisy = _add_latent_noise(z, noise_std, relative=relative)
         out = model.decoder(z_noisy)
         return _unwrap_tensor(out)
 
@@ -125,7 +150,6 @@ def _forward_with_latent_noise(model, x, noise_std=0.0):
         f"{model.__class__.__name__} must expose either encode()/decode() "
         f"or encoder/decoder for latent-noise visualization."
     )
-
 
 def save_images(
     model,
@@ -154,7 +178,12 @@ def save_images(
                 x = torch.clamp(x, 0.0, 1.0)
 
             if latent_noise:
-                out_tensor = _forward_with_latent_noise(model, x, noise_std)
+                out_tensor = _forward_with_latent_noise(
+                    model,
+                    x,
+                    noise_std=noise_std,
+                    relative=True,
+                )
             else:
                 out = model(x)
                 out_tensor = _unwrap_tensor(out)
