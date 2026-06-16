@@ -1,10 +1,10 @@
 from models.unet.unet_ae_base import UNetAEBase
 
 
-class UNetAE64(UNetAEBase):
+class UNetAETest(UNetAEBase):
     def __init__(self, config: dict):
         super().__init__(config)
 
 
-model_class = UNetAE64
-config_path = "configs/unet/unet_ae_64.json"
+model_class = UNetAETest
+config_path = "configs/test/unet_ae_test.json"

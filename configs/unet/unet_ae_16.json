@@ -6,7 +6,7 @@
   "latent_channels": 16,
   "latent_spatial_size": 7,
   "latent_size": 784,
-  "encoder_channels": [14, 20, 28, 40, 52],
+  "encoder_channels": [8, 12, 20, 28, 36],
   "dropout": 0.2,
   "batch_size": 32,
   "num_workers": 8,

@@ -1,10 +1,10 @@
 from models.conv.conv_transpose_ae_base import ConvTransposeAEBase
 
 
-class ConvTransposeAE512(ConvTransposeAEBase):
+class ConvTransposeAETest(ConvTransposeAEBase):
     def __init__(self, config: dict):
         super().__init__(config)
 
 
-model_class = ConvTransposeAE512
-config_path = "configs/conv/conv_transpose_ae_512.json"
+model_class = ConvTransposeAETest
+config_path = "configs/test/conv_transpose_ae_test.json"

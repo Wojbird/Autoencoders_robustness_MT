@@ -6,7 +6,6 @@ SIZES = [16, 32, 64, 128, 256]
 
 MODEL_PATTERNS = [
     "conv.conv_transpose_ae_{size}",
-    "residual.residual_ae_{size}",
     "unet.unet_ae_{size}",
     "adversarial.adversarial_ae_{size}",
     "vqv.vq_v_ae_{size}",
