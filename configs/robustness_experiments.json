@@ -1,0 +1,42 @@
+{
+  "seed": 1234,
+  "checkpoint_dataset": "full",
+  "evaluation_dataset": "subset",
+  "dataset": {
+    "subset_root": "datasets/subset_imagenet/",
+    "validation_fraction": 0.1,
+    "split_seed": 42,
+    "sample_seed": 2026,
+    "max_samples": 1000
+  },
+  "evaluation": {
+    "device": "cuda:0",
+    "batch_size": 8,
+    "num_workers": 2,
+    "save_previews": false,
+    "preview_count": 4
+  },
+  "attacks": {
+    "gaussian_input": {
+      "levels": [0.02, 0.05, 0.1],
+      "description": "Additive Gaussian noise on input images in the unchanged [0, 1] scale."
+    },
+    "gaussian_latent": {
+      "levels": [0.02, 0.05, 0.1],
+      "description": "Relative Gaussian noise: z + alpha * std(z) * epsilon."
+    },
+    "impulse": {
+      "levels": [0.01, 0.03, 0.05],
+      "description": "Salt-and-pepper noise. One spatial mask is shared by RGB channels."
+    },
+    "rotation": {
+      "levels": [2.0, 5.0, 10.0],
+      "directions": [-1, 1],
+      "description": "Bilinear rotation in both directions after reflection padding."
+    },
+    "occlusion": {
+      "levels": [0.05, 0.15, 0.3],
+      "description": "Square occlusion covering the given image-area fraction, filled with per-channel image means."
+    }
+  }
+}

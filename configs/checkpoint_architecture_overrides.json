@@ -1,0 +1,33 @@
+{
+  "description": "Architecture parameters reconstructed from tensor shapes stored in the trained checkpoints. These overrides are used only during robustness evaluation and do not modify the original training configurations.",
+  "models": {
+    "conv_transpose_ae_16": {
+      "encoder_channels": [28, 40, 56, 76, 96]
+    },
+    "conv_transpose_ae_32": {
+      "encoder_channels": [32, 44, 60, 80, 100]
+    },
+    "unet_ae_16": {
+      "encoder_channels": [14, 20, 28, 40, 52]
+    },
+    "unet_ae_32": {
+      "encoder_channels": [16, 22, 30, 42, 54]
+    },
+    "adversarial_ae_16": {
+      "encoder_channels": [14, 20, 28, 40, 52]
+    },
+    "adversarial_ae_32": {
+      "encoder_channels": [16, 22, 30, 42, 54]
+    },
+    "vq_v_ae_16": {
+      "stem_channels": [14, 20],
+      "encoder_channels": [28, 40, 56, 72],
+      "bottleneck_channels": 88
+    },
+    "vq_v_ae_32": {
+      "stem_channels": [14, 22],
+      "encoder_channels": [32, 44, 60, 76],
+      "bottleneck_channels": 96
+    }
+  }
+}
