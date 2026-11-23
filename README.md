@@ -1,174 +1,116 @@
 # Autoencoders Robustness
-Badanie odporności różnych architektur autoenkoderów na szum i zdolności rekonstrukcji przy użyciu zbioru ImageNet.
 
-## Spis treści
-1. [Opis](#opis)
-2. [Wymagania i instalacja](#wymagania-i-instalacja)
-3. [Struktura katalogów](#struktura-katalogów)
-4. [Instrukcja użytkowania](#instrukcja-użytkowania)
+Projekt porównuje jakość rekonstrukcji i odporność autoenkoderów dla obrazów RGB ImageNet2012 skalowanych do `224×224`.
 
-## Opis
+## Protokół danych
 
-Projekt **Autoencoders Robustness** bada odporność różnych architektur autoenkoderów na zakłócenia oraz ich zdolności rekonstrukcji obrazu. W eksperymentach porównano klasyczne autoenkodery konwolucyjne, modele U-Net, sieci resztkowe oraz warianty VQ-VAE (Vector Quantized Variational Autoencoder). Modele trenowane są w trzech trybach: na czystych danych, z zaszumionym wejściem oraz z zakłóceniami w przestrzeni latentnej. Do treningu i ewaluacji wykorzystano zestaw danych ImageNet oraz metryki MSE, PSNR i SSIM.
+Jedyna obowiązująca transformacja obrazu:
 
-## Wymagania i instalacja
-
-### Wymagania systemowe
-- Python 3.10+
-- GPU z CUDA (rekomendowane: ≥12 GB VRAM)
-- CPU (rekomendowane: ≥30 core'ów)
-
-### Wymagane biblioteki Python
-Wszystkie zależności znajdują się w pliku `requirements.txt`. Główne biblioteki:
-- `torch`
-- `torchvision`
-- `torchmetrics`
-- `numpy`
-- `pandas`
-- `matplotlib`
-- `tqdm`
-- `scikit-image`
-
-### Instalacja
-
-1. Utwórz i aktywuj środowisko:
-   ```bash
-   python -m venv venv
-   ```
-   ```bash
-   #Linux
-   source venv/bin/activate   
-   ```
-   ```bash
-   #Windows
-   venv\Scripts\activate
-   ```
-   
-2. Zainstaluj wymagane biblioteki:
-   ```bash
-   pip install -r requirements.txt
-   
-   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-   ```
-   
-3. Zweryfikuj, że torch widzi GPU:
-   ```bash
-   python device_check.py
-   ```
-   
-4. (Opcjonalnie) w celu pobrania testoewgo Subnet of ImageNet:
-   ```bash
-   python prepare_subset.py
-   ```
-   
-## Struktura katalogów
-
-```
-.
-├── configs/                # Pliki konfiguracyjne modeli i treningu (JSON)
-│   ├── adversarial/
-│   ├── conv/
-│   ├── residual/
-│   ├── unet/
-│   ├── vqv/
-│   └── vqv2/
-│
-├── models/                # Implementacje architektur AE (PY)
-│   ├── adversarial/
-│   ├── conv/
-│   ├── residual/
-│   ├── unet/
-│   ├── vqv/
-│   └── vqv2/
-│
-├── training/              # Skrypty treningowe
-│   ├── train_clean.py
-│   ├── train_noisy.py
-│   └── train_noisy_latent.py
-│
-├── evaluation/            # Ewaluacja jakości rekonstrukcji i odporności
-│   └── evaluate.py
-│
-├── data/                  # Przygotowanie i ładowanie zbioru danych
-│   ├── prepare_subset.py
-│   └── data_setter.py
-│
-├── utils/                 # Narzędzia pomocnicze (logowanie, metryki, rysowanie, seed, itd.)
-│
-├── results/               # Folder z wynikami (metryki TXT, wykresy,  obrazy PNG)
-│
-├── requirements.txt       # Lista wymaganych bibliotek Python
-│
-├── device_check.txt       # Skrypt do sprawdzania GPU
-│
-└── main.py                # Główny punkt wejścia – ładuje konfigurację i uruchamia trening lub ewaluację
+```python
+transforms.Resize((224, 224))
+transforms.ToTensor()
 ```
 
-## Instrukcja użytkowania:
+Zakres wejścia i wyjścia wynosi `[0,1]`. Modele kończą dekoder warstwą `Sigmoid`. Nie należy dodawać `transforms.Normalize` bez zmiany całego protokołu treningu i ewaluacji.
 
-### Argumenty:
+## Macierz modeli
 
-- Argumenty:
-   ```bash
-   python main.py --mode <tryb> --model <model> --type <wariant> --input <dane> [--log]
-   ```
-  
-### Opis:
+Rodziny:
 
-1. --mode 
+- `conv_transpose_ae` — klasyczny konwolucyjny AE,
+- `residual_ae` — AE z blokami rezydualnymi,
+- `u_shaped_ae` — symetryczny AE bez skip connections,
+- `unet_ae` — właściwy U-Net ze skip connections,
+- `adversarial_unet_ae` — generator U-Net trenowany z MSE i stratą adversarial,
+- `vq_v_ae` — jednopoziomowy VQ-VAE.
 
-tryb (tryb działania):
-- train – trening modelu,
-- test – ewaluacja modelu (na zbiorze testowym),
-- train_test – połączenie treningu i ewaluacji (jeden po drugim).
+Każda rodzina występuje dla `C ∈ {16, 32, 64, 128, 256}`. Centralny tensor ma rozmiar `C×7×7`.
 
-2. --model 
+Warianty treningu:
 
-model (nazwa modelu lub grupa modeli), np.:
-- conv_transpose_ae_512
-- residual_ae_256
-- vq_v_ae_512
-- unet (dla całej grupy modeli models/unet/)
-- all (dla wszystkich modeli)
+- `clean`,
+- `noisy`,
+- `noisy_latent` — tylko dla ciągłych reprezentacji; VQ-VAE jest wykluczony.
 
-3. --type 
+## Instalacja
 
-wariant (rodzaj danych wejściowych):
-- clean – czyste dane (bez szumu),
-- noisy – dane z szumem Gaussowskim (na wejściu),
-- noisy_latent – szum w przestrzeni latentnej,
-- all – wykonuje trening lub test dla wszystkich trzech wariantów po kolei.
+Utwórz środowisko wirtualne. Następnie zainstaluj PyTorch i TorchVision za pomocą oficjalnego selektora: https://pytorch.org/get-started/locally/
 
-4. --input 
+Pozostałe zależności:
 
-dane (źródło danych):
-- subset (opcjonalnie) – podzbiór ImageNet (np. wybrane klasy),
-- full – pełny zbiór ImageNet (potrzebuje dużej ilości RAM/dysku).
+```bash
+python -m pip install -r requirements.txt
+```
 
-W celu zmiany ścierzki wczytywania danych należy zmodyfokować plik "utils/data_path.txt"!
+Testy i narzędzia deweloperskie:
 
-5. --log (opcjonalnie)
+```bash
+python -m pip install -r requirements-dev.txt
+```
 
-(włącza szczegółowe logowanie procesu)
+Opcjonalne logowanie W&B:
 
-### Przykłady użycia
+```bash
+python -m pip install -r requirements-wandb.txt
+```
 
-1. Trening pojedynczego modelu "conv_transpose_ae_512" na czystych danych z logami:
-   ```bash
-   python main.py --mode train --model conv_transpose_ae_512 --type clean --input subset --log
-   ```
+## Dane
 
-2. Trening całej grupy "residual" na wszystkich typach danych:
-   ```bash
-   python main.py --mode train --model residual --type all --input subset
-   ```
-   
-3. Pełny trening + ewaluacja dla modelu vq_v_ae2_512
-   ```bash
-   python main.py --mode train_test --model vq_v_ae2_512 --type clean --input full
-   ```
-   
-4. Ewaluacja wszystkich modeli z folderu unet na zaszumionych danych:
-   ```bash
-   python main.py --mode test --model u_shaped --type noisy --input subset
-   ```
+Pełny ImageNet można wskazać zmienną środowiskową `IMAGENET_DIR` albo plikiem `data/root.json`. Lokalny subset powinien znajdować się w `datasets/subset_imagenet/` i mieć strukturę zgodną z `torchvision.datasets.ImageFolder`.
+
+## Trening
+
+Pojedynczy model:
+
+```bash
+python main.py --mode train --model unet_ae_64 --type clean --input subset --log
+```
+
+Cała rodzina i wszystkie wspierane warianty:
+
+```bash
+python main.py --mode train --model conv --type all --input full --log
+```
+
+VQ-VAE automatycznie pomija `noisy_latent`:
+
+```bash
+python main.py --mode train --model vqv --type all --input full --log
+```
+
+## Ewaluacja podstawowa
+
+```bash
+python main.py --mode test --model unet_ae_64 --type clean --input subset --eval_on all
+```
+
+Metryki MSE, PSNR i SSIM są obliczane osobno dla każdego obrazu, a następnie uśredniane po próbkach.
+
+## Ewaluacja odporności
+
+Obsługiwane warunki:
+
+- clean,
+- Gaussian noise na wejściu,
+- Gaussian noise w reprezentacji latentnej,
+- impulse/salt-and-pepper,
+- okluzja.
+
+Rotacja nie należy do obowiązującego protokołu. VQ-VAE nie jest oceniany dla ciągłego ataku latentnego.
+
+```bash
+python robustness_main.py --mode all --model all --training-variant all
+```
+
+## Testy
+
+```bash
+python -m pytest tests/test_model_matrix.py -v
+python param_counter.py --model all
+```
+
+Testy weryfikują macierz 6×5, budżety parametrów, zakres wyjść, działanie prawdziwego U-Netu oraz ograniczenia VQ-VAE.
+
+## Ważna uwaga metodologiczna
+
+Dla U-Netu centralny tensor `C×7×7` nie jest pełnym wąskim gardłem informacyjnym, ponieważ skip connections przekazują cechy z enkodera do dekodera. Dlatego współczynnik kompresji centralnego tensora nie powinien być interpretowany tak samo jak dla architektur bez skip connections.
