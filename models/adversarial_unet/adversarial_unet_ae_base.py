@@ -45,7 +45,7 @@ class ImageDiscriminator(nn.Module):
 
 
 class AdversarialUNetAEBase(UNetAEBase):
-    """True U-Net generator trained with reconstruction and adversarial losses."""
+    """True U-Net generator trained with reconstruction and adversarial_unet losses."""
 
     discriminator_class = ImageDiscriminator
 

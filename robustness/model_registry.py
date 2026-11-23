@@ -41,7 +41,7 @@ FAMILY_ALIASES = {
     "u-shaped": "u_shaped",
     "unet": "unet",
     "unet": "unet",
-    "adversarial": "adversarial_unet",
+    "adversarial_unet": "adversarial_unet",
     "adversarial_unet": "adversarial_unet",
     "adv": "adversarial_unet",
     "gan": "adversarial_unet",

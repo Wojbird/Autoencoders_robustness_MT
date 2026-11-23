@@ -1,4 +1,4 @@
-from models.adversarial.adversarial_ae_base import AdversarialAEBase
+from models.adversarial_unet.adversarial_ae_base import AdversarialAEBase
 
 
 class AdversarialAE1024(AdversarialAEBase):
@@ -7,4 +7,4 @@ class AdversarialAE1024(AdversarialAEBase):
 
 
 model_class = AdversarialAE1024
-config_path = "configs/adversarial/adversarial_ae_1024.json"
+config_path = "configs/adversarial_unet/adversarial_ae_1024.json"

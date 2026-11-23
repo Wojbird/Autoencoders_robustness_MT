@@ -442,7 +442,7 @@ def _write_comparison_scope_table(
         allowed_families={
             "conv",
             "u_shaped",
-            "adversarial",
+            "adversarial_unet",
         },
     )
 
@@ -708,7 +708,7 @@ def generate_plots(
         allowed_families={
             "conv",
             "u_shaped",
-            "adversarial",
+            "adversarial_unet",
         },
     )
 
