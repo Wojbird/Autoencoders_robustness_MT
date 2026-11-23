@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import csv
 import gc
+import hashlib
+import json
 import os
 from pathlib import Path
 from typing import Iterable
@@ -19,8 +21,12 @@ from .attacks import (
     apply_input_attack,
     apply_latent_attack,
 )
-from .metrics import compute_evaluation_metrics
 from .model_registry import ModelSpec, load_trained_model
+from utils.image_metrics import compute_evaluation_metrics
+from utils.latent import forward_with_latent_transform, unwrap_tensor
+
+
+EVALUATION_PROTOCOL_VERSION = "2"
 
 
 RAW_COLUMNS = [
@@ -32,6 +38,9 @@ RAW_COLUMNS = [
     "checkpoint_dataset",
     "evaluation_dataset",
     "checkpoint_path",
+    "checkpoint_sha256",
+    "config_sha256",
+    "evaluation_protocol_version",
     "attack",
     "severity",
     "direction",
@@ -52,11 +61,25 @@ RAW_COLUMNS = [
 ]
 
 
-def _unwrap_tensor(value):
-    if isinstance(value, (tuple, list)):
-        return value[0]
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
 
-    return value
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+
+    return digest.hexdigest()
+
+
+def _sha256_json(payload: dict) -> str:
+    serialized = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+
+    return hashlib.sha256(serialized).hexdigest()
 
 
 def _encode_decode_with_latent_attack(
@@ -67,27 +90,117 @@ def _encode_decode_with_latent_attack(
     attack_seed: int,
     batch_index: int,
 ) -> torch.Tensor:
-    if (
-        not hasattr(model, "encode")
-        or not callable(getattr(model, "encode"))
-        or not hasattr(model, "decode")
-        or not callable(getattr(model, "decode"))
-    ):
-        raise AttributeError(
-            f"{model.__class__.__name__} must expose encode() and "
-            "decode() for latent-space evaluation."
+    def transform(latent: torch.Tensor) -> torch.Tensor:
+        return apply_latent_attack(
+            latent,
+            condition,
+            base_seed=attack_seed,
+            batch_index=batch_index,
         )
 
-    latent = _unwrap_tensor(model.encode(x))
-
-    attacked_latent = apply_latent_attack(
-        latent,
-        condition,
-        base_seed=attack_seed,
-        batch_index=batch_index,
+    return forward_with_latent_transform(
+        model,
+        x,
+        transform,
     )
 
-    return _unwrap_tensor(model.decode(attacked_latent))
+
+def _validate_existing_result(
+    output_path: Path,
+    *,
+    spec: ModelSpec,
+    training_variant: str,
+    checkpoint_dataset: str,
+    condition: AttackCondition,
+    checkpoint_sha256: str,
+    config_sha256: str,
+    expected_sample_count: int,
+) -> None:
+    with output_path.open(
+        "r",
+        encoding="utf-8",
+        newline="",
+    ) as file:
+        reader = csv.DictReader(file)
+        rows = list(reader)
+
+    first_row = rows[0] if rows else None
+
+    if first_row is None:
+        raise ValueError(
+            f"Existing robustness result is empty: {output_path}. "
+            "Use overwrite=True to regenerate it."
+        )
+
+    required_columns = {
+        "model_name",
+        "training_variant",
+        "checkpoint_dataset",
+        "attack",
+        "severity",
+        "direction",
+        "checkpoint_sha256",
+        "config_sha256",
+        "evaluation_protocol_version",
+    }
+    missing_columns = required_columns.difference(first_row)
+
+    if missing_columns:
+        raise ValueError(
+            f"Existing robustness result uses an obsolete schema: "
+            f"{output_path}. Missing columns: "
+            f"{sorted(missing_columns)}. Use overwrite=True."
+        )
+
+    expected_values = {
+        "model_name": spec.model_name,
+        "training_variant": training_variant,
+        "checkpoint_dataset": checkpoint_dataset,
+        "attack": condition.name,
+        "direction": str(condition.direction),
+        "checkpoint_sha256": checkpoint_sha256,
+        "config_sha256": config_sha256,
+        "evaluation_protocol_version": EVALUATION_PROTOCOL_VERSION,
+    }
+
+    mismatches = []
+
+    for key, expected in expected_values.items():
+        actual = str(first_row[key])
+        if actual != str(expected):
+            mismatches.append(
+                f"{key}: found {actual!r}, expected {expected!r}"
+            )
+
+    try:
+        stored_severity = float(first_row["severity"])
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            f"Invalid severity in existing result: {output_path}."
+        ) from error
+
+    if stored_severity != float(condition.severity):
+        mismatches.append(
+            "severity: found "
+            f"{stored_severity!r}, expected {condition.severity!r}"
+        )
+
+    if len(rows) != expected_sample_count:
+        mismatches.append(
+            "row_count: found "
+            f"{len(rows)}, expected {expected_sample_count}"
+        )
+
+    sample_indices = [row.get("sample_index") for row in rows]
+    if len(set(sample_indices)) != len(sample_indices):
+        mismatches.append("sample_index values are not unique")
+
+    if mismatches:
+        raise ValueError(
+            f"Existing robustness result is incompatible: {output_path}. "
+            + "; ".join(mismatches)
+            + ". Use overwrite=True or a different output directory."
+        )
 
 
 def _tensor_to_numpy_image(
@@ -211,6 +324,8 @@ def _write_batch_rows(
     training_variant: str,
     checkpoint_dataset: str,
     checkpoint_path: Path,
+    checkpoint_sha256: str,
+    config_sha256: str,
     condition: AttackCondition,
     sample_indices: torch.Tensor,
     sample_paths: list[str] | tuple[str, ...],
@@ -230,6 +345,9 @@ def _write_batch_rows(
                 "checkpoint_dataset": checkpoint_dataset,
                 "evaluation_dataset": "subset",
                 "checkpoint_path": str(checkpoint_path),
+                "checkpoint_sha256": checkpoint_sha256,
+                "config_sha256": config_sha256,
+                "evaluation_protocol_version": EVALUATION_PROTOCOL_VERSION,
                 "attack": condition.name,
                 "severity": condition.severity,
                 "direction": condition.direction,
@@ -272,6 +390,8 @@ def evaluate_condition(
     training_variant: str,
     checkpoint_dataset: str,
     checkpoint_path: Path,
+    checkpoint_sha256: str,
+    config_sha256: str,
     dataloader,
     device: torch.device,
     condition: AttackCondition,
@@ -289,7 +409,17 @@ def evaluate_condition(
     )
 
     if output_path.exists() and not overwrite:
-        print(f"[skip] Existing result: {output_path}")
+        _validate_existing_result(
+            output_path,
+            spec=spec,
+            training_variant=training_variant,
+            checkpoint_dataset=checkpoint_dataset,
+            condition=condition,
+            checkpoint_sha256=checkpoint_sha256,
+            config_sha256=config_sha256,
+            expected_sample_count=len(dataloader.dataset),
+        )
+        print(f"[skip] Existing compatible result: {output_path}")
         return output_path
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -349,9 +479,9 @@ def evaluate_condition(
                         )
 
                         if save_previews and not preview_saved:
-                            clean_reconstruction = _unwrap_tensor(model(x))
+                            clean_reconstruction = unwrap_tensor(model(x))
                     else:
-                        reconstruction = _unwrap_tensor(
+                        reconstruction = unwrap_tensor(
                             model(attacked_input)
                         )
 
@@ -377,6 +507,8 @@ def evaluate_condition(
                         training_variant=training_variant,
                         checkpoint_dataset=checkpoint_dataset,
                         checkpoint_path=checkpoint_path,
+                        checkpoint_sha256=checkpoint_sha256,
+                        config_sha256=config_sha256,
                         condition=condition,
                         sample_indices=sample_indices,
                         sample_paths=sample_paths,
@@ -458,6 +590,17 @@ def evaluate_checkpoint(
     save_previews: bool = False,
     preview_count: int = 4,
 ) -> list[Path]:
+    if not checkpoint_path.is_file():
+        raise FileNotFoundError(
+            f"Checkpoint does not exist: {checkpoint_path}"
+        )
+
+    if preview_count <= 0:
+        raise ValueError("preview_count must be positive.")
+
+    checkpoint_sha256 = _sha256_file(checkpoint_path)
+    config_sha256 = _sha256_json(spec.config)
+
     model = load_trained_model(
         spec,
         checkpoint_path,
@@ -475,6 +618,8 @@ def evaluate_checkpoint(
                     training_variant=training_variant,
                     checkpoint_dataset=checkpoint_dataset,
                     checkpoint_path=checkpoint_path,
+                    checkpoint_sha256=checkpoint_sha256,
+                    config_sha256=config_sha256,
                     dataloader=dataloader,
                     device=device,
                     condition=condition,

@@ -1,10 +1,11 @@
 from models.unet.unet_ae_base import UNetAEBase
 
 
-class UNetAE64(UNetAEBase):
-    def __init__(self, config: dict):
-        super().__init__(config)
+class UnetAe64(UNetAEBase):
+    """Configuration-bound model wrapper."""
+
+    pass
 
 
-model_class = UNetAE64
-config_path = "configs/unet/unet_ae_64.json"
+model_class = UnetAe64
+config_path = "configs/unet_ae_64.json"

@@ -1,10 +1,11 @@
 from models.conv.conv_transpose_ae_base import ConvTransposeAEBase
 
 
-class ConvTransposeAE64(ConvTransposeAEBase):
-    def __init__(self, config: dict):
-        super().__init__(config)
+class ConvTransposeAe64(ConvTransposeAEBase):
+    """Configuration-bound model wrapper."""
+
+    pass
 
 
-model_class = ConvTransposeAE64
-config_path = "configs/conv/conv_transpose_ae_64.json"
+model_class = ConvTransposeAe64
+config_path = "configs/conv_transpose_ae_64.json"

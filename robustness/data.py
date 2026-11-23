@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from pathlib import Path
 from typing import Any
@@ -49,6 +50,42 @@ class IndexedSubset(Dataset):
             source_index,
             str(relative_path),
         )
+
+
+def _relative_sample_path(
+    dataset: ImageFolder,
+    source_index: int,
+    root: Path,
+) -> str:
+    source_path = Path(
+        dataset.samples[source_index][0]
+    ).resolve()
+
+    try:
+        return str(source_path.relative_to(root.resolve()))
+    except ValueError:
+        return str(source_path)
+
+
+def _dataset_index_sha256(
+    dataset: ImageFolder,
+    root: Path,
+) -> str:
+    """Hash deterministic sample paths and class ids, not image bytes."""
+    digest = hashlib.sha256()
+
+    for source_index, (_, class_id) in enumerate(dataset.samples):
+        relative_path = _relative_sample_path(
+            dataset,
+            source_index,
+            root,
+        )
+        digest.update(relative_path.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(str(int(class_id)).encode("ascii"))
+        digest.update(b"\n")
+
+    return digest.hexdigest()
 
 
 def _atomic_json_dump(
@@ -162,12 +199,18 @@ def build_evaluation_loader(
         else min(int(max_samples), len(validation_set))
     )
 
+    dataset_index_hash = _dataset_index_sha256(
+        base_dataset,
+        subset_root,
+    )
+
     expected_values = {
         "evaluation_dataset": "subset",
         "checkpoint_dataset": checkpoint_dataset,
         "subset_root": str(subset_root.resolve()),
         "image_size": image_size,
         "full_subset_length": len(base_dataset),
+        "dataset_index_sha256": dataset_index_hash,
         "validation_length": len(validation_set),
         "validation_fraction": validation_fraction,
         "split_seed": split_seed,
@@ -196,6 +239,66 @@ def build_evaluation_loader(
             int(value)
             for value in manifest["selected_source_indices"]
         ]
+
+        if len(selected_source_indices) != requested_samples:
+            raise ValueError(
+                "Existing run manifest contains "
+                f"{len(selected_source_indices)} selected indices, "
+                f"but {requested_samples} were expected."
+            )
+
+        if len(set(selected_source_indices)) != len(
+            selected_source_indices
+        ):
+            raise ValueError(
+                "Existing run manifest contains duplicate source indices."
+            )
+
+        invalid_indices = [
+            index
+            for index in selected_source_indices
+            if index < 0 or index >= len(base_dataset)
+        ]
+
+        if invalid_indices:
+            raise ValueError(
+                "Existing run manifest contains out-of-range source "
+                f"indices: {invalid_indices[:10]}"
+            )
+
+        current_relative_paths = [
+            _relative_sample_path(
+                base_dataset,
+                source_index,
+                subset_root,
+            )
+            for source_index in selected_source_indices
+        ]
+        stored_relative_paths = [
+            str(value)
+            for value in manifest.get("selected_relative_paths", [])
+        ]
+
+        if current_relative_paths != stored_relative_paths:
+            raise ValueError(
+                "Dataset paths no longer match selected_source_indices "
+                "stored in run_manifest.json. Use a new output directory."
+            )
+
+        current_class_ids = [
+            int(base_dataset.samples[source_index][1])
+            for source_index in selected_source_indices
+        ]
+        stored_class_ids = [
+            int(value)
+            for value in manifest.get("selected_class_ids", [])
+        ]
+
+        if current_class_ids != stored_class_ids:
+            raise ValueError(
+                "Dataset class ids no longer match run_manifest.json. "
+                "Use a new output directory."
+            )
     else:
         generator = torch.Generator().manual_seed(sample_seed)
 
@@ -212,26 +315,24 @@ def build_evaluation_loader(
             for position in selected_validation_positions
         ]
 
-        selected_relative_paths = []
-
-        for source_index in selected_source_indices:
-            source_path = Path(
-                base_dataset.samples[source_index][0]
-            ).resolve()
-
-            try:
-                relative_path = source_path.relative_to(
-                    subset_root.resolve()
-                )
-            except ValueError:
-                relative_path = source_path
-
-            selected_relative_paths.append(str(relative_path))
+        selected_relative_paths = [
+            _relative_sample_path(
+                base_dataset,
+                source_index,
+                subset_root,
+            )
+            for source_index in selected_source_indices
+        ]
+        selected_class_ids = [
+            int(base_dataset.samples[source_index][1])
+            for source_index in selected_source_indices
+        ]
 
         manifest = {
             **expected_values,
             "selected_source_indices": selected_source_indices,
             "selected_relative_paths": selected_relative_paths,
+            "selected_class_ids": selected_class_ids,
             "normalization": (
                 "Resize((image_size, image_size)) + ToTensor(); "
                 "image range [0, 1]"
@@ -258,6 +359,7 @@ def build_evaluation_loader(
         "num_workers": num_workers,
         "pin_memory": device.type == "cuda",
         "persistent_workers": num_workers > 0,
+        "generator": torch.Generator().manual_seed(sample_seed),
     }
 
     if num_workers > 0:

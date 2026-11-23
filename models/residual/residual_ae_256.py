@@ -1,10 +1,11 @@
 from models.residual.residual_ae_base import ResidualAEBase
 
 
-class ResidualAE256(ResidualAEBase):
-    def __init__(self, config: dict):
-        super().__init__(config)
+class ResidualAe256(ResidualAEBase):
+    """Configuration-bound model wrapper."""
+
+    pass
 
 
-model_class = ResidualAE256
-config_path = "configs/residual/residual_ae_256.json"
+model_class = ResidualAe256
+config_path = "configs/residual_ae_256.json"

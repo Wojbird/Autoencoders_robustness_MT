@@ -1,4 +1,11 @@
 from models.conv.conv_transpose_ae_base import ConvTransposeAEBase
 
-model_class = ConvTransposeAEBase
-config_path = "configs/conv/conv_transpose_ae_32.json"
+
+class ConvTransposeAe32(ConvTransposeAEBase):
+    """Configuration-bound model wrapper."""
+
+    pass
+
+
+model_class = ConvTransposeAe32
+config_path = "configs/conv_transpose_ae_32.json"

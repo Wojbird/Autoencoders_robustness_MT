@@ -61,7 +61,7 @@ def parse_args() -> argparse.Namespace:
         nargs="+",
         default=["all"],
         help=(
-            "all, a family (conv/unet/adversarial/vqv), "
+            "all, a family (conv/u_shaped/adversarial/vqv), "
             "or one or more exact model names."
         ),
     )

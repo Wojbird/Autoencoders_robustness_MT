@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from models.unet.unet_ae_base import UNetAEBase
+from models.u_shaped.u_shaped_ae_base import UNetAEBase
 
 
 def _num_groups(channels: int) -> int:

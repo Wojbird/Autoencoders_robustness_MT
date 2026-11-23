@@ -1,4 +1,11 @@
 from models.residual.residual_ae_base import ResidualAEBase
 
-model_class = ResidualAEBase
-config_path = "configs/residual/residual_ae_16.json"
+
+class ResidualAe16(ResidualAEBase):
+    """Configuration-bound model wrapper."""
+
+    pass
+
+
+model_class = ResidualAe16
+config_path = "configs/residual_ae_16.json"
