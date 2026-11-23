@@ -8,4 +8,4 @@ class UnetAe32(UNetAEBase):
 
 
 model_class = UnetAe32
-config_path = "configs/unet_ae_32.json"
+config_path = "configs/unet/unet_ae_32.json"

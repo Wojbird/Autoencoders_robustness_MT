@@ -1,22 +1,9 @@
-pip>=23.1.2
-setuptools>=68.0.0
-wheel>=0.40.0
+# Install torch and torchvision first with the official PyTorch selector:
+# https://pytorch.org/get-started/locally/
+# Their wheel must match the target CPU/CUDA platform.
 
-torchmetrics>=0.11.4
-wandb>=0.17
-
-numpy>=1.25.0
-scipy>=1.8
-matplotlib>=3.7.1
-scikit-image>=0.19
-Pillow>=9.0
-tqdm>=4.65.0
-
-pandas>=2.0
-scikit-learn>=1.2
-
-kaggle>=1.5
-
-tensorboard>=2.15
-torchvision
-torch
+torchmetrics>=1.9,<2.0
+numpy>=1.26,<3.0
+matplotlib>=3.8,<4.0
+pandas>=2.1,<4.0
+Pillow>=10.0,<13.0

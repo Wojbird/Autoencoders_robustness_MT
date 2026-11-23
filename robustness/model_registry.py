@@ -40,8 +40,8 @@ FAMILY_ALIASES = {
     "ushaped": "u_shaped",
     "u-shaped": "u_shaped",
     "unet": "unet",
-    "unet": "unet",
-    "adversarial_unet": "adversarial_unet",
+    "u_net": "unet",
+    "adversarial": "adversarial_unet",
     "adversarial_unet": "adversarial_unet",
     "adv": "adversarial_unet",
     "gan": "adversarial_unet",
@@ -98,6 +98,14 @@ class ModelSpec:
     @property
     def uses_checkpoint_override(self) -> bool:
         return False
+
+    @property
+    def supports_latent_attack(self) -> bool:
+        """
+        Gaussian perturbation of a continuous latent tensor is not directly
+        comparable with perturbing already-quantized VQ codebook vectors.
+        """
+        return self.family != "vqv"
 
 
 def _load_json(path: Path) -> dict:

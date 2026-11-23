@@ -8,4 +8,4 @@ class VqVAe16(VQVAEBase):
 
 
 model_class = VqVAe16
-config_path = "configs/vq_v_ae_16.json"
+config_path = "configs/vqv/vq_v_ae_16.json"

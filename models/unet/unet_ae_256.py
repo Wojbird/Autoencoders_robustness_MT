@@ -8,4 +8,4 @@ class UnetAe256(UNetAEBase):
 
 
 model_class = UnetAe256
-config_path = "configs/unet_ae_256.json"
+config_path = "configs/unet/unet_ae_256.json"

@@ -26,7 +26,7 @@ from utils.image_metrics import compute_evaluation_metrics
 from utils.latent import forward_with_latent_transform, unwrap_tensor
 
 
-EVALUATION_PROTOCOL_VERSION = "2"
+EVALUATION_PROTOCOL_VERSION = "3"
 
 
 RAW_COLUMNS = [
@@ -519,14 +519,6 @@ def evaluate_condition(
                     )
 
                     if save_previews and not preview_saved:
-                        direction_text = ""
-
-                        if condition.name == "rotation":
-                            signed_angle = (
-                                condition.direction * condition.severity
-                            )
-                            direction_text = f" | angle={signed_angle:+g}"
-
                         _save_preview(
                             _preview_output_path(
                                 output_root,
@@ -542,7 +534,6 @@ def evaluate_condition(
                                 f"{training_variant} | "
                                 f"{condition.name} | "
                                 f"severity={condition.severity}"
-                                f"{direction_text}"
                             ),
                             max_images=preview_count,
                             clean_reconstructions=clean_reconstruction,

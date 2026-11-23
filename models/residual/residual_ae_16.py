@@ -8,4 +8,4 @@ class ResidualAe16(ResidualAEBase):
 
 
 model_class = ResidualAe16
-config_path = "configs/residual_ae_16.json"
+config_path = "configs/residual/residual_ae_16.json"

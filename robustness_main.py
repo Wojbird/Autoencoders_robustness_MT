@@ -61,8 +61,9 @@ def parse_args() -> argparse.Namespace:
         nargs="+",
         default=["all"],
         help=(
-            "all, a family (conv/u_shaped/adversarial_unet/vqv), "
-            "or one or more exact model names."
+            "all, a canonical family, or one or more exact model names; "
+            "families: conv, residual, u_shaped, unet, "
+            "adversarial_unet, vqv."
         ),
     )
 
@@ -142,8 +143,7 @@ def parse_args() -> argparse.Namespace:
         "--strict-checkpoints",
         action="store_true",
         help=(
-            "Stop immediately when an expected checkpoint is missing. "
-            "Do not use this for the current 54-checkpoint experiment."
+            "Stop immediately when an expected checkpoint is missing."
         ),
     )
 
@@ -429,13 +429,25 @@ def run_evaluation(
 
     print(
         f"Selected model configurations: {len(model_specs)} | "
-        f"executable conditions per checkpoint: {len(conditions)}"
+        f"configured conditions: {len(conditions)}"
     )
 
     missing_checkpoints: list[dict] = []
     evaluated_checkpoints = 0
 
     for spec in model_specs:
+        spec_conditions = [
+            condition
+            for condition in conditions
+            if spec.supports_latent_attack or not condition.is_latent
+        ]
+
+        if len(spec_conditions) != len(conditions):
+            print(
+                f"[protocol] {spec.model_name}: gaussian_latent omitted "
+                "because VQ-VAE uses quantized codebook vectors."
+            )
+
         if spec.uses_checkpoint_override:
             print(
                 f"[override] {spec.model_name}: "
@@ -483,7 +495,7 @@ def run_evaluation(
                 "\n=== "
                 f"{spec.model_name} | "
                 f"{training_variant} | "
-                f"{len(conditions)} conditions ==="
+                f"{len(spec_conditions)} conditions ==="
             )
 
             evaluate_checkpoint(
@@ -492,7 +504,7 @@ def run_evaluation(
                 checkpoint_dataset=checkpoint_dataset,
                 checkpoint_path=checkpoint_path,
                 dataloader=dataloader,
-                conditions=conditions,
+                conditions=spec_conditions,
                 device=device,
                 output_root=output_directory,
                 attack_seed=experiment_seed,

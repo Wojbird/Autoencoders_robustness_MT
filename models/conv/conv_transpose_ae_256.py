@@ -8,4 +8,4 @@ class ConvTransposeAe256(ConvTransposeAEBase):
 
 
 model_class = ConvTransposeAe256
-config_path = "configs/conv_transpose_ae_256.json"
+config_path = "configs/conv/conv_transpose_ae_256.json"

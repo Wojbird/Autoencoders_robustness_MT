@@ -20,6 +20,7 @@ from utils.helpers import (
     plot_metrics,
     safe_save_state_dict,
     save_images,
+    set_seed,
 )
 from utils.latent import (
     add_gaussian_latent_noise,
@@ -105,9 +106,18 @@ def train_noisy_latent_model(
     scheduler_patience = int(cfg.get("scheduler_patience", 5))
     scheduler_min_lr = float(cfg.get("scheduler_min_lr", 1e-6))
     scheduler_threshold = float(cfg.get("scheduler_threshold", 1e-4))
+    experiment_seed = int(cfg.get("experiment_seed", 42))
+    dataset_split_seed = int(cfg.get("dataset_split_seed", 42))
     eval_noise_seed = int(cfg.get("eval_noise_seed", 1234))
     dataloader_seed = int(cfg.get("dataloader_seed", 42))
 
+    if scheduler_patience >= patience:
+        raise ValueError(
+            "scheduler_patience must be smaller than "
+            "early_stopping_patience."
+        )
+
+    set_seed(experiment_seed)
     device = get_device(gpu_id)
     pin_memory = device.type == "cuda"
 
@@ -128,19 +138,20 @@ def train_noisy_latent_model(
         train_set, val_set = get_subnet_datasets(
             image_size=image_size,
             val_split=0.1,
-        )
-        val_set = ensure_val_fraction(
-            val_set,
-            val_fraction,
-            split_seed=42,
+            split_seed=dataset_split_seed,
         )
     else:
         raise ValueError("dataset_type must be 'subset' or 'full'.")
 
+    val_set = ensure_val_fraction(
+        val_set,
+        val_fraction,
+        split_seed=dataset_split_seed + 1,
+    )
     train_eval_set = ensure_val_fraction(
         train_set,
         train_eval_fraction,
-        split_seed=123,
+        split_seed=dataloader_seed + 1,
     )
 
     train_generator = torch.Generator().manual_seed(dataloader_seed)
@@ -152,6 +163,7 @@ def train_noisy_latent_model(
         num_workers=num_workers,
         pin_memory=pin_memory,
         generator=train_generator,
+        persistent_workers=num_workers > 0,
     )
     train_eval_loader = DataLoader(
         train_eval_set,
@@ -159,6 +171,7 @@ def train_noisy_latent_model(
         shuffle=False,
         num_workers=num_workers,
         pin_memory=pin_memory,
+        persistent_workers=num_workers > 0,
     )
     val_loader = DataLoader(
         val_set,
@@ -166,6 +179,7 @@ def train_noisy_latent_model(
         shuffle=False,
         num_workers=num_workers,
         pin_memory=pin_memory,
+        persistent_workers=num_workers > 0,
     )
 
     optimizer = torch.optim.Adam(

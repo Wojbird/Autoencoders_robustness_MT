@@ -6,6 +6,7 @@ import pytest
 import torch
 
 from robustness.model_registry import discover_model_specs
+from robustness.attacks import SUPPORTED_ATTACKS, build_attack_conditions
 from utils.latent import forward_with_latent_transform
 
 
@@ -153,3 +154,30 @@ def test_vq_models_do_not_advertise_latent_noise_training(specs):
     for spec in specs:
         if spec.family == "vqv":
             assert spec.supported_training_variants == ("clean", "noisy")
+            assert spec.supports_latent_attack is False
+        else:
+            assert spec.supports_latent_attack is True
+
+
+def test_robustness_protocol_excludes_rotation():
+    assert SUPPORTED_ATTACKS == (
+        "gaussian_input",
+        "gaussian_latent",
+        "impulse",
+        "occlusion",
+    )
+
+    config = {
+        "attacks": {
+            attack: {"levels": [0.1]}
+            for attack in SUPPORTED_ATTACKS
+        }
+    }
+    conditions = build_attack_conditions(config, selected=["all"])
+    assert [condition.name for condition in conditions] == [
+        "clean",
+        "gaussian_input",
+        "gaussian_latent",
+        "impulse",
+        "occlusion",
+    ]

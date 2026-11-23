@@ -8,4 +8,4 @@ class VqVAe256(VQVAEBase):
 
 
 model_class = VqVAe256
-config_path = "configs/vq_v_ae_256.json"
+config_path = "configs/vqv/vq_v_ae_256.json"

@@ -65,60 +65,9 @@ def _condition_key_from_file(
 def _read_and_collapse(
     paths: Iterable[Path],
 ) -> pd.DataFrame:
-    """
-    Combine files representing one logical condition.
-
-    Rotation directions +theta and -theta are averaged for each original
-    image, so they do not count as two independent observations.
-    """
+    """Combine files representing one logical condition."""
     frames = [pd.read_csv(path) for path in paths]
-    frame = pd.concat(frames, ignore_index=True)
-    attack = str(frame["attack"].iloc[0])
-
-    if attack != "rotation":
-        return frame
-
-    directions = {
-        int(value)
-        for value in frame["direction"].unique()
-    }
-
-    if directions != {-1, 1}:
-        raise ValueError(
-            "Rotation requires both directions -1 and 1; "
-            f"found {sorted(directions)}."
-        )
-
-    metadata_columns = [
-        "model_name",
-        "family",
-        "latent_channels",
-        "latent_elements",
-        "training_variant",
-        "checkpoint_dataset",
-        "evaluation_dataset",
-        "checkpoint_path",
-        "attack",
-        "severity",
-        "attack_space",
-        "input_changed",
-        "sample_index",
-        "sample_path",
-        "class_id",
-    ]
-
-    collapsed = (
-        frame.groupby(
-            metadata_columns,
-            as_index=False,
-            dropna=False,
-        )[BASE_METRIC_COLUMNS]
-        .mean()
-    )
-
-    collapsed["direction"] = 0
-
-    return collapsed
+    return pd.concat(frames, ignore_index=True)
 
 
 def _derive_against_baseline(
@@ -441,7 +390,9 @@ def _write_comparison_scope_table(
         },
         allowed_families={
             "conv",
+            "residual",
             "u_shaped",
+            "unet",
             "adversarial_unet",
         },
     )
@@ -707,7 +658,9 @@ def generate_plots(
         },
         allowed_families={
             "conv",
+            "residual",
             "u_shaped",
+            "unet",
             "adversarial_unet",
         },
     )

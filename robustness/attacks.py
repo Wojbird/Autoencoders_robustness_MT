@@ -6,16 +6,12 @@ import math
 from typing import Iterable
 
 import torch
-import torch.nn.functional as F
-from torchvision.transforms import InterpolationMode
-from torchvision.transforms import functional as TF
 
 
 SUPPORTED_ATTACKS = (
     "gaussian_input",
     "gaussian_latent",
     "impulse",
-    "rotation",
     "occlusion",
 )
 
@@ -43,11 +39,6 @@ class AttackCondition:
     @property
     def file_stem(self) -> str:
         severity = format_number_for_filename(self.severity)
-
-        if self.name == "rotation":
-            suffix = "plus" if self.direction > 0 else "minus"
-            return f"rotation__{severity}__{suffix}"
-
         return f"{self.name}__{severity}"
 
 
@@ -116,51 +107,21 @@ def build_attack_conditions(
                 f"No severity levels configured for attack '{attack_name}'."
             )
 
-        if attack_name == "rotation":
-            directions = sorted(
-                set(
-                    int(value)
-                    for value in attack_config.get("directions", [-1, 1])
+        for level in levels:
+            level = float(level)
+
+            if level <= 0.0:
+                raise ValueError(
+                    f"Severity for '{attack_name}' must be > 0."
+                )
+
+            conditions.append(
+                AttackCondition(
+                    name=attack_name,
+                    severity=level,
+                    direction=0,
                 )
             )
-
-            if directions != [-1, 1]:
-                raise ValueError(
-                    "Rotation directions must contain exactly -1 and 1."
-                )
-
-            for level in levels:
-                level = float(level)
-
-                if level <= 0.0:
-                    raise ValueError(
-                        "Rotation levels must be positive absolute angles."
-                    )
-
-                for direction in directions:
-                    conditions.append(
-                        AttackCondition(
-                            name="rotation",
-                            severity=level,
-                            direction=direction,
-                        )
-                    )
-        else:
-            for level in levels:
-                level = float(level)
-
-                if level <= 0.0:
-                    raise ValueError(
-                        f"Severity for '{attack_name}' must be > 0."
-                    )
-
-                conditions.append(
-                    AttackCondition(
-                        name=attack_name,
-                        severity=level,
-                        direction=0,
-                    )
-                )
 
     return conditions
 
@@ -267,68 +228,6 @@ def _impulse_noise(
     )
 
 
-def _rotation_padding(
-    image_size: int,
-    angle_degrees: float,
-) -> int:
-    angle_radians = math.radians(abs(angle_degrees))
-    half_size = image_size / 2.0
-
-    required_half_size = half_size * (
-        abs(math.cos(angle_radians))
-        + abs(math.sin(angle_radians))
-    )
-
-    return max(
-        1,
-        int(math.ceil(required_half_size - half_size)) + 2,
-    )
-
-
-def _rotate_with_reflection_padding(
-    x: torch.Tensor,
-    angle_degrees: float,
-) -> torch.Tensor:
-    """
-    Rotate after reflection padding and crop back to the original resolution.
-
-    This avoids large black triangular regions at image corners.
-    """
-    _, _, height, width = x.shape
-
-    if height != width:
-        raise ValueError(
-            "Rotation implementation expects square images."
-        )
-
-    padding = _rotation_padding(height, angle_degrees)
-
-    padded = F.pad(
-        x,
-        pad=(padding, padding, padding, padding),
-        mode="reflect",
-    )
-
-    rotated = TF.rotate(
-        padded,
-        angle=float(angle_degrees),
-        interpolation=InterpolationMode.BILINEAR,
-        expand=False,
-        fill=0.0,
-    )
-
-    attacked = TF.center_crop(
-        rotated,
-        output_size=[height, width],
-    )
-
-    return torch.clamp(
-        attacked,
-        min=0.0,
-        max=1.0,
-    )
-
-
 def _occlusion(
     x: torch.Tensor,
     area_fraction: float,
@@ -424,14 +323,6 @@ def apply_input_attack(
             x,
             condition.severity,
             generator,
-        )
-
-    if condition.name == "rotation":
-        return _rotate_with_reflection_padding(
-            x,
-            angle_degrees=(
-                condition.direction * condition.severity
-            ),
         )
 
     if condition.name == "occlusion":

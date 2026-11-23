@@ -8,4 +8,4 @@ class AdversarialUnetAe32(AdversarialUNetAEBase):
 
 
 model_class = AdversarialUnetAe32
-config_path = "configs/adversarial_unet_ae_32.json"
+config_path = "configs/adversarial_unet/adversarial_unet_ae_32.json"

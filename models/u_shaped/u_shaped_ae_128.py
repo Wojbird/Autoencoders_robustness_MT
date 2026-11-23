@@ -8,4 +8,4 @@ class UShapedAe128(UShapedAEBase):
 
 
 model_class = UShapedAe128
-config_path = "configs/u_shaped_ae_128.json"
+config_path = "configs/u_shaped/u_shaped_ae_128.json"
