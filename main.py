@@ -1,257 +1,263 @@
-import json
+from __future__ import annotations
+
+import argparse
+import logging
 import os
+from collections.abc import Mapping
+from pathlib import Path
 
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
 
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+
+import matplotlib
 import torch
 from torch.utils.data import DataLoader
-import argparse
-import importlib
-import sys
-import logging
-from pathlib import Path
-import matplotlib
 
-torch.set_num_threads(1)
 
 matplotlib.use("Agg")
 
+from data.data_setter import get_imagenet_datasets, get_subnet_datasets
+from evaluation.evaluate import evaluate_model
+from robustness.model_registry import ModelSpec, discover_model_specs
 from training.train_clean import train_clean_model
 from training.train_noisy import train_noisy_model
 from training.train_noisy_latent import train_noisy_latent_model
-from evaluation.evaluate import evaluate_model
-from utils.helpers import set_seed, setup_device, get_device
-from data.data_setter import get_subnet_datasets, get_imagenet_datasets
+from utils.helpers import get_device, set_seed, setup_device
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Autoencoder Robustness Framework")
+PROJECT_ROOT = Path(__file__).resolve().parent
+TRAINERS = {
+    "clean": train_clean_model,
+    "noisy": train_noisy_model,
+    "noisy_latent": train_noisy_latent_model,
+}
 
-    parser.add_argument("--mode", choices=["train", "test", "train_test"], required=True)
-    parser.add_argument("--model", required=True)
-    parser.add_argument("--type", choices=["clean", "noisy", "noisy_latent", "all"], default="clean")
-    parser.add_argument("--input", choices=["subset", "full"], default="subset")
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Train and evaluate the canonical autoencoder experiment matrix."
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("train", "test", "train_test"),
+        required=True,
+    )
+    parser.add_argument(
+        "--model",
+        required=True,
+        help="Exact model name, canonical family/alias, or 'all'.",
+    )
+    parser.add_argument(
+        "--type",
+        choices=("clean", "noisy", "noisy_latent", "all"),
+        default="clean",
+        help="Training/checkpoint variant.",
+    )
+    parser.add_argument(
+        "--input",
+        choices=("subset", "full"),
+        default="subset",
+        help="Dataset scope retained for backward CLI compatibility.",
+    )
     parser.add_argument(
         "--eval_on",
-        choices=["clean", "noisy", "noisy_latent", "all"],
+        choices=("clean", "noisy", "noisy_latent", "all"),
         default="all",
-        help="Evaluation condition used in test mode."
+        help="Evaluation condition used in test modes.",
     )
     parser.add_argument("--log", action="store_true")
     parser.add_argument("--log_wandb", action="store_true")
     parser.add_argument("--gpu", type=int, default=None)
-
+    parser.add_argument(
+        "--deterministic",
+        action="store_true",
+        help="Request deterministic PyTorch algorithms where available.",
+    )
     return parser.parse_args()
 
 
-def load_config(config_path: str) -> dict:
-    with open(config_path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def build_val_loader(cfg: dict, dataset_type: str):
-    image_size = int(cfg.get("image_size", 224))
-    batch_size = int(cfg.get("batch_size", 32))
-    num_workers = int(cfg.get("num_workers", 4))
+def _build_validation_loader(config: dict, dataset_type: str) -> DataLoader:
+    image_size = int(config.get("image_size", 224))
+    batch_size = int(config.get("batch_size", 32))
+    num_workers = int(config.get("num_workers", 4))
+    split_seed = int(config.get("dataset_split_seed", 42))
 
     if dataset_type == "subset":
-        _, val_set = get_subnet_datasets(image_size=image_size, val_split=0.1)
+        _, validation_set = get_subnet_datasets(
+            image_size=image_size,
+            val_split=0.1,
+            split_seed=split_seed,
+        )
     elif dataset_type == "full":
-        _, val_set = get_imagenet_datasets(image_size=image_size)
+        _, validation_set = get_imagenet_datasets(image_size=image_size)
     else:
-        raise ValueError(f"Unknown dataset_type: {dataset_type}")
+        raise ValueError("dataset_type must be 'subset' or 'full'.")
 
+    pin_memory = torch.cuda.is_available()
     return DataLoader(
-        val_set,
+        validation_set,
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=True,
+        pin_memory=pin_memory,
+        persistent_workers=num_workers > 0,
     )
 
 
-MAIN_EXPERIMENT_SIZES = {16, 32, 64, 128, 256}
+def _load_checkpoint_state(checkpoint_path: Path, device: torch.device) -> Mapping:
+    try:
+        payload = torch.load(
+            checkpoint_path,
+            map_location=device,
+            weights_only=True,
+        )
+    except TypeError:
+        # Compatibility with trusted, project-generated checkpoints on older
+        # PyTorch releases that do not expose the weights_only argument.
+        payload = torch.load(checkpoint_path, map_location=device)
 
-
-def _model_size_from_stem(stem: str) -> int | None:
-    suffix = stem.split("_")[-1]
-    if suffix.isdigit():
-        return int(suffix)
-    return None
-
-
-def discover_models(base_dir: str, target: str) -> list:
-    base = Path(base_dir)
-
-    def is_real_model_file(p: Path) -> bool:
-        parts = set(p.parts)
-        return (
-            p.name.endswith(".py")
-            and not p.name.endswith("_base.py")
-            and p.name != "__init__.py"
-            and "junk_folder" not in parts
+    if not isinstance(payload, Mapping):
+        raise TypeError(
+            f"Checkpoint root must be a mapping, received {type(payload).__name__}: "
+            f"{checkpoint_path}"
         )
 
-    def is_main_experiment_model_file(p: Path) -> bool:
-        if not is_real_model_file(p):
-            return False
-        if "test" in set(p.parts):
-            return False
+    if "model_state_dict" in payload:
+        payload = payload["model_state_dict"]
 
-        size = _model_size_from_stem(p.stem)
-        return size in MAIN_EXPERIMENT_SIZES
-
-    if target == "all":
-        return [p for p in base.rglob("*.py") if is_main_experiment_model_file(p)]
-
-    exact_matches = [p for p in base.rglob(f"{target}.py") if is_real_model_file(p)]
-    if exact_matches:
-        return exact_matches
-
-    candidate_dir = base / target
-    if candidate_dir.is_dir():
-        return [p for p in candidate_dir.glob("*.py") if is_main_experiment_model_file(p)]
-
-    print(f"Error: Could not find model '{target}' in {base_dir}")
-    sys.exit(1)
+    if not isinstance(payload, Mapping):
+        raise TypeError(f"model_state_dict is not a mapping: {checkpoint_path}")
+    return payload
 
 
-def import_model(module_path: Path):
-    rel_path = module_path.with_suffix("").relative_to(Path("models"))
-    module_name = ".".join(["models"] + list(rel_path.parts))
-    module = importlib.import_module(module_name)
-
-    model_class = getattr(module, "model_class", None)
-    config_path = getattr(module, "config_path", None)
-
-    if model_class is None or config_path is None:
-        print(f"Error: Module {module_name} must define 'model_class' and 'config_path'")
-        sys.exit(1)
-
-    return model_class, config_path
+def _variants_for_spec(spec: ModelSpec, requested: str) -> tuple[str, ...]:
+    supported = spec.supported_training_variants
+    if requested == "all":
+        return supported
+    if requested not in supported:
+        raise ValueError(
+            f"{spec.model_name} does not support training variant {requested!r}. "
+            f"Supported variants: {supported}."
+        )
+    return (requested,)
 
 
-def is_vq_config(cfg: dict) -> bool:
-    return str(cfg.get("family", "")).lower() == "vqv"
+def _evaluation_variants(spec: ModelSpec, requested: str) -> tuple[str, ...]:
+    supported = spec.supported_training_variants
+    if requested == "all":
+        return supported
+    if requested not in supported:
+        raise ValueError(
+            f"{spec.model_name} does not support evaluation variant {requested!r}. "
+            f"Supported variants: {supported}."
+        )
+    return (requested,)
 
 
-def run(mode, model_path: Path, input_type, dataset_type, log, log_wandb, gpu_id=None, eval_on="all"):
-    model_class, config_path = import_model(model_path)
-    cfg = load_config(config_path)
-
-    if input_type == "all":
-        variants = ["clean", "noisy", "noisy_latent"]
-        if is_vq_config(cfg):
-            variants = ["clean", "noisy"]
-
-        for variant in variants:
-            print(f"\n--- Running {mode} for input type: {variant} ---")
-            run(mode, model_path, variant, dataset_type, log, log_wandb, gpu_id=gpu_id, eval_on=eval_on)
-        return
-
-    if input_type == "noisy_latent" and is_vq_config(cfg):
-        print(f"Skipping noisy_latent for VQ model: {cfg.get('name', model_path.stem)}")
-        return
-
-    model_name = str(cfg.get("name", model_path.stem))
-    train_noise_std = (
-        float(cfg.get("noise_latent", cfg.get("noise_std", 0.0)))
-        if input_type == "noisy_latent"
-        else float(cfg.get("noise_std", 0.0))
+def _checkpoint_path(
+    *,
+    spec: ModelSpec,
+    dataset_type: str,
+    training_variant: str,
+) -> Path:
+    return spec.checkpoint_path(
+        PROJECT_ROOT / "checkpoints",
+        dataset_type,
+        training_variant,
     )
 
-    results_dir = os.path.join("results", model_name, dataset_type, input_type)
-    os.makedirs(results_dir, exist_ok=True)
 
-    ckpt_dir = os.path.join("checkpoints", model_name, dataset_type, input_type)
-    ckpt_path = os.path.join(ckpt_dir, f"{model_name}_{input_type}_best.pt")
+def run_variant(
+    *,
+    mode: str,
+    spec: ModelSpec,
+    training_variant: str,
+    dataset_type: str,
+    evaluate_on: str,
+    log: bool,
+    log_wandb: bool,
+    gpu_id: int | None,
+) -> None:
+    config = spec.config
+    experiment_seed = int(config.get("experiment_seed", 42))
+    set_seed(experiment_seed)
 
-    trained_ckpt = None
+    checkpoint_path = _checkpoint_path(
+        spec=spec,
+        dataset_type=dataset_type,
+        training_variant=training_variant,
+    )
 
-    if mode in ("train", "train_test"):
-        if input_type == "clean":
-            trained_ckpt = train_clean_model(
-                model_class,
-                config_path,
-                dataset_type=dataset_type,
-                log=log,
-                log_wandb=log_wandb,
-                gpu_id=gpu_id,
-            )
-        elif input_type == "noisy":
-            trained_ckpt = train_noisy_model(
-                model_class,
-                config_path,
-                dataset_type=dataset_type,
-                log=log,
-                log_wandb=log_wandb,
-                gpu_id=gpu_id,
-            )
-        elif input_type == "noisy_latent":
-            trained_ckpt = train_noisy_latent_model(
-                model_class,
-                config_path,
-                dataset_type=dataset_type,
-                log=log,
-                log_wandb=log_wandb,
-                gpu_id=gpu_id,
-            )
-        else:
-            raise ValueError(f"Unknown input type: {input_type}")
+    if mode in {"train", "train_test"}:
+        trainer = TRAINERS[training_variant]
+        trained_path = trainer(
+            spec.model_class,
+            str(spec.config_path),
+            dataset_type=dataset_type,
+            log=log,
+            log_wandb=log_wandb,
+            gpu_id=gpu_id,
+        )
+        checkpoint_path = Path(trained_path).resolve()
+        print(f"Best checkpoint: {checkpoint_path}")
 
-        if isinstance(trained_ckpt, str) and trained_ckpt:
-            ckpt_path = trained_ckpt
+    if mode not in {"test", "train_test"}:
+        return
 
-        print(f"Best checkpoint: {ckpt_path}")
+    if not checkpoint_path.is_file():
+        raise FileNotFoundError(
+            f"Checkpoint not found: {checkpoint_path}. Train this exact "
+            "model/dataset/variant combination first."
+        )
 
-    if mode in ("test", "train_test"):
-        if not os.path.exists(ckpt_path):
-            raise FileNotFoundError(
-                f"Checkpoint not found: {ckpt_path}\n"
-                f"Run training first or verify your trainer saves the best checkpoint there."
-            )
+    device = get_device(gpu_id)
+    model = spec.model_class(config).to(device)
+    state_dict = _load_checkpoint_state(checkpoint_path, device)
+    model.load_state_dict(state_dict, strict=True)
 
-        device = get_device(gpu_id)
+    validation_loader = _build_validation_loader(config, dataset_type)
+    eval_noise_std = float(
+        config.get("eval_noise_std", config.get("noise_std", 0.1))
+    )
+    eval_noise_seed = int(config.get("eval_noise_seed", 1234))
+    latent_noise_relative = bool(config.get("latent_noise_relative", True))
 
-        try:
-            model = model_class(cfg).to(device)
-        except TypeError:
-            model = model_class().to(device)
+    for evaluation_variant in _evaluation_variants(spec, evaluate_on):
+        output_dir = (
+            PROJECT_ROOT
+            / "results"
+            / spec.model_name
+            / dataset_type
+            / training_variant
+            / "test"
+            / f"{evaluation_variant}_eval"
+        )
+        metrics = evaluate_model(
+            model=model,
+            dataloader=validation_loader,
+            device=device,
+            variant=evaluation_variant,
+            noise_std=(
+                float(config.get("noise_latent", eval_noise_std))
+                if evaluation_variant == "noisy_latent"
+                else eval_noise_std
+            ),
+            results_dir=str(output_dir),
+            noise_seed=eval_noise_seed,
+            latent_noise_relative=latent_noise_relative,
+        )
 
-        state = torch.load(ckpt_path, map_location=device)
-        if isinstance(state, dict) and "model_state_dict" in state:
-            state = state["model_state_dict"]
-        model.load_state_dict(state)
-
-        val_loader = build_val_loader(cfg, dataset_type)
-
-        eval_noise_std = float(cfg.get("eval_noise_std", cfg.get("noise_std", train_noise_std)))
-        eval_variants = ["clean", "noisy", "noisy_latent"] if eval_on == "all" else [eval_on]
-
-        if is_vq_config(cfg):
-            eval_variants = [v for v in eval_variants if v != "noisy_latent"]
-
-        for eval_variant in eval_variants:
-            test_dir = os.path.join(results_dir, "test", f"{eval_variant}_eval")
-            metrics = evaluate_model(
-                model=model,
-                dataloader=val_loader,
-                device=device,
-                variant=eval_variant,
-                noise_std=eval_noise_std,
-                results_dir=test_dir,
-                noise_seed=1234,
-            )
-
-            print(f"Evaluation metrics ({eval_variant}):")
-            for k, v in metrics.items():
-                print(f"  {k}: {v:.6f}")
+        print(
+            f"{spec.model_name} | trained={training_variant} | "
+            f"evaluated={evaluation_variant}"
+        )
+        for metric_name, value in metrics.items():
+            print(f"  {metric_name}: {value:.6f}")
 
 
-def main():
+def main() -> None:
     args = parse_args()
-
     logging.basicConfig(
         level=logging.INFO if args.log else logging.WARNING,
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -259,23 +265,35 @@ def main():
         force=True,
     )
 
-    set_seed(42)
-    setup_device(args.gpu)
+    os.chdir(PROJECT_ROOT)
+    setup_device(args.gpu, deterministic=args.deterministic)
 
-    model_paths = discover_models("models", args.model)
-
-    for path in model_paths:
-        print(f"\n>>> Running {args.mode} for model: {path}")
-        run(
-            args.mode,
-            path,
-            args.type,
-            args.input,
-            args.log,
-            args.log_wandb,
-            gpu_id=args.gpu,
-            eval_on=args.eval_on,
+    specs = discover_model_specs(
+        PROJECT_ROOT,
+        selectors=[args.model],
+    )
+    if not specs:
+        raise ValueError(
+            f"No canonical model matched {args.model!r}. Use an exact model "
+            "name, a registered family alias, or 'all'."
         )
+
+    for spec in specs:
+        for training_variant in _variants_for_spec(spec, args.type):
+            print(
+                f"\n>>> {args.mode}: {spec.model_name} "
+                f"[{args.input}/{training_variant}]"
+            )
+            run_variant(
+                mode=args.mode,
+                spec=spec,
+                training_variant=training_variant,
+                dataset_type=args.input,
+                evaluate_on=args.eval_on,
+                log=args.log,
+                log_wandb=args.log_wandb,
+                gpu_id=args.gpu,
+            )
 
 
 if __name__ == "__main__":
